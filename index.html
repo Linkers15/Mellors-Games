@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mellors Games</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom Theme Config to match the Logo -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'mellors-dark': '#0a0f16', 
+                        'mellors-gray': '#161e29',
+                        'mellors-blue': '#2563eb', 
+                        'mellors-green': '#10b981',
+                        'mellors-cyan': '#06b6d4',
+                    },
+                    backgroundImage: {
+                        'logo-gradient': 'linear-gradient(to right, #3b82f6, #06b6d4, #10b981)',
+                        'circuit-pattern': "radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, rgba(10, 15, 22, 0) 50%)"
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0a0f16;
+            color: #ffffff;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0a0f16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2937; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151; 
+        }
+
+        /* Glow Effects */
+        .neon-text {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.5);
+        }
+        
+        .card-hover {
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.2);
+            border-color: rgba(6, 182, 212, 0.5);
+        }
+
+        /* Sidebar Transition */
+        .sidebar-transition {
+            transition: transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<!-- Use h-screen and overflow-hidden to create a dashboard layout -->
+<body class="bg-mellors-dark h-screen w-full flex overflow-hidden">
+
+    <!-- MOBILE OVERLAY BACKDROP -->
+    <div id="overlay" onclick="toggleMenu()" class="fixed inset-0 bg-black/50 z-40 hidden lg:hidden glass backdrop-blur-sm transition-opacity"></div>
+
+    <!-- SIDEBAR NAVIGATION -->
+    <!-- On Mobile: Fixed, Z-50, Off-canvas by default. 
+         On Desktop: Relative, Flex item, Always visible. -->
+    <aside id="sidebar" class="sidebar-transition fixed lg:relative inset-y-0 left-0 z-50 w-64 bg-mellors-gray border-r border-gray-800 flex flex-col transform -translate-x-full lg:translate-x-0 flex-shrink-0 shadow-2xl lg:shadow-none">
+        
+        <!-- Logo Area -->
+        <div class="h-20 flex items-center justify-center border-b border-gray-800 flex-shrink-0">
+            <div class="flex items-center gap-3 px-4">
+                <!-- LOGO IMAGE: Updated to .png -->
+                <img src="mellorslogo.png" alt="Mellors Games" class="h-12 w-auto object-contain" onerror="this.style.display='none'; document.getElementById('desk-text-logo').style.display='block';">
+                <span id="desk-text-logo" style="display:none;" class="font-bold text-2xl tracking-wider bg-clip-text text-transparent bg-logo-gradient">MELLORS</span>
+            </div>
+            <!-- Mobile Close Button -->
+            <button onclick="toggleMenu()" class="lg:hidden absolute right-4 text-gray-400 hover:text-white">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Navigation Links (Scrollable) -->
+        <nav class="flex-1 overflow-y-auto py-6 px-3 space-y-1">
+            
+            <div class="px-3 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Discover</div>
+            
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-white rounded-lg bg-gradient-to-r from-cyan-900/40 to-transparent border-l-4 border-mellors-cyan">
+                <i class="fas fa-home w-6 text-center mr-2 text-mellors-cyan"></i>
+                Home
+            </a>
+            
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition">
+                <i class="fas fa-fire w-6 text-center mr-2"></i>
+                Popular
+            </a>
+            
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition">
+                <i class="fas fa-star w-6 text-center mr-2"></i>
+                New Releases
+            </a>
+
+            <div class="mt-8 px-3 mb-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Categories</div>
+
+            <!-- SIDEBAR LINKS -->
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition group">
+                <i class="fas fa-crosshairs w-6 text-center mr-2 group-hover:text-red-400"></i>
+                Action
+            </a>
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition group">
+                <i class="fas fa-chess w-6 text-center mr-2 group-hover:text-blue-400"></i>
+                Strategy
+            </a>
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition group">
+                <i class="fas fa-dungeon w-6 text-center mr-2 group-hover:text-purple-400"></i>
+                RPG
+            </a>
+            <a href="#" class="flex items-center px-3 py-3 text-sm font-medium text-gray-400 rounded-lg hover:bg-gray-800 hover:text-white transition group">
+                <i class="fas fa-car w-6 text-center mr-2 group-hover:text-yellow-400"></i>
+                Racing
+            </a>
+        </nav>
+
+        <!-- User / Settings Bottom -->
+        <div class="p-4 border-t border-gray-800 flex-shrink-0">
+            <a href="#" class="flex items-center gap-3 px-2 py-2 text-sm font-medium text-gray-400 hover:text-white transition">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </a>
+        </div>
+    </aside>
+
+
+    <!-- MAIN CONTENT AREA -->
+    <!-- flex-1 ensures it fills the remaining space next to sidebar -->
+    <main class="flex-1 flex flex-col relative bg-circuit-pattern bg-fixed h-full overflow-hidden">
+        
+        <!-- MOBILE HEADER (Only visible on small screens) -->
+        <div class="lg:hidden flex-shrink-0 flex justify-between items-center p-4 bg-mellors-gray border-b border-gray-800 sticky top-0 z-30">
+            <div class="flex items-center gap-2">
+                <!-- Mobile Logo Fallback -->
+                <img src="mellorslogo.png" alt="Mellors Games" class="h-8 w-auto object-contain" onerror="this.style.display='none'; document.getElementById('mob-text-logo').style.display='block';">
+                <span id="mob-text-logo" style="display:none;" class="font-bold text-lg bg-clip-text text-transparent bg-logo-gradient">MELLORS</span>
+            </div>
+            <button onclick="toggleMenu()" class="text-white hover:text-mellors-cyan transition p-2">
+                <i class="fas fa-bars text-xl"></i>
+            </button>
+        </div>
+
+        <!-- DESKTOP HEADER + SEARCH -->
+        <header class="h-20 flex-shrink-0 flex items-center justify-between px-8 border-b border-gray-800/50 backdrop-blur-md sticky top-0 z-20">
+            <h1 class="text-2xl font-bold hidden lg:block">Welcome Back</h1>
+            
+            <div class="flex-1 max-w-lg mx-auto lg:mx-0 lg:ml-auto relative">
+                <input type="text" placeholder="Search games..." class="w-full bg-gray-900 border border-gray-700 rounded-full py-2 pl-10 pr-4 text-sm text-gray-300 focus:outline-none focus:border-mellors-cyan focus:ring-1 focus:ring-mellors-cyan transition">
+                <i class="fas fa-search absolute left-3 top-2.5 text-gray-500"></i>
+            </div>
+            
+            <div class="ml-6 hidden lg:flex items-center gap-4">
+                <button class="w-10 h-10 rounded-full bg-gray-800 hover:bg-gray-700 flex items-center justify-center transition">
+                    <i class="fas fa-bell text-mellors-cyan"></i>
+                </button>
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-mellors-blue to-mellors-green p-0.5 cursor-pointer">
+                    <div class="w-full h-full rounded-full bg-gray-900 flex items-center justify-center text-xs font-bold">
+                        MG
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- SCROLLABLE CONTENT -->
+        <div class="flex-1 overflow-y-auto p-6 lg:p-10 scroll-smooth">
+
+            <!-- HERO SECTION -->
+            <div class="relative w-full rounded-2xl overflow-hidden mb-12 border border-gray-700 shadow-2xl">
+                <!-- Background Image Placeholder -->
+                <div class="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1542751371-adc38448a05e?q=80&w=2670&auto=format&fit=crop')] bg-cover bg-center"></div>
+                <!-- Gradient Overlay -->
+                <div class="absolute inset-0 bg-gradient-to-r from-mellors-dark via-mellors-dark/80 to-transparent"></div>
+                
+                <div class="relative z-10 p-8 lg:p-12 max-w-2xl">
+                    <h2 class="text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+                        Experience the <br>
+                        <span class="text-transparent bg-clip-text bg-logo-gradient neon-text">Next Level</span>
+                    </h2>
+                    <p class="text-gray-300 mb-8 text-lg">
+                        Dive into our curated collection of high-performance games. Strategy, action, and adventure await at Mellors Games.
+                    </p>
+                    <div class="flex flex-wrap gap-4">
+                        <button class="px-8 py-3 bg-logo-gradient rounded-full font-bold text-black hover:opacity-90 transition transform hover:scale-105 shadow-[0_0_15px_rgba(16,185,129,0.4)]">
+                            Play Now
+                        </button>
+                        <button class="px-8 py-3 border border-gray-600 rounded-full font-semibold hover:bg-gray-800 transition">
+                            Browse All
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION TITLE -->
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <i class="fas fa-gamepad text-mellors-cyan"></i> Featured Games
+                </h3>
+                <a href="#" class="text-sm text-mellors-cyan hover:underline">View All</a>
+            </div>
+
+            <!-- GAMES GRID -->
+            <!-- ********************************************** -->
+            <!--          EDIT LINKS BELOW THIS LINE            -->
+            <!-- ********************************************** -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-20">
+
+                <!-- GAME BLOCK START -->
+                <div class="bg-mellors-gray rounded-xl overflow-hidden card-hover group relative">
+                    <!-- Image Area -->
+                    <div class="h-48 bg-gray-800 relative overflow-hidden">
+                        <!-- Replace 'src' with your game image URL -->
+                        <img src="https://images.unsplash.com/photo-1552820728-8b83bb6b773f?w=800&auto=format&fit=crop" 
+                             alt="Game Title" 
+                             class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
+                        <div class="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded text-xs font-bold text-mellors-green">
+                            New
+                        </div>
+                    </div>
+                    <!-- Text Area -->
+                    <div class="p-5">
+                        <h4 class="text-lg font-bold text-white mb-1">Cyber Strike</h4>
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">
+                            Enter the digital battlefield and reclaim the network in this fast-paced FPS.
+                        </p>
+                        <!-- YOUR LINK HERE -->
+                        <a href="https://your-game-url.com" class="block w-full py-2 bg-gray-800 hover:bg-mellors-cyan hover:text-black text-center rounded-lg text-sm font-bold transition-colors">
+                            Play Now
+                        </a>
+                    </div>
+                </div>
+                <!-- GAME BLOCK END -->
+
+                <!-- GAME BLOCK START -->
+                <div class="bg-mellors-gray rounded-xl overflow-hidden card-hover group relative">
+                    <div class="h-48 bg-gray-800 relative overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=800&auto=format&fit=crop" alt="Game Title" class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
+                    </div>
+                    <div class="p-5">
+                        <h4 class="text-lg font-bold text-white mb-1">Neon Racer</h4>
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">
+                            High speed chases through a synthwave city. Don't look back.
+                        </p>
+                        <!-- YOUR LINK HERE -->
+                        <a href="#" class="block w-full py-2 bg-gray-800 hover:bg-mellors-cyan hover:text-black text-center rounded-lg text-sm font-bold transition-colors">
+                            Play Now
+                        </a>
+                    </div>
+                </div>
+                <!-- GAME BLOCK END -->
+
+                <!-- GAME BLOCK START -->
+                <div class="bg-mellors-gray rounded-xl overflow-hidden card-hover group relative">
+                    <div class="h-48 bg-gray-800 relative overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1560253023-3ec5d502959f?w=800&auto=format&fit=crop" alt="Game Title" class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
+                    </div>
+                    <div class="p-5">
+                        <h4 class="text-lg font-bold text-white mb-1">Star Strategy</h4>
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">
+                            Command your fleet and conquer the galaxy system by system.
+                        </p>
+                        <!-- YOUR LINK HERE -->
+                        <a href="#" class="block w-full py-2 bg-gray-800 hover:bg-mellors-cyan hover:text-black text-center rounded-lg text-sm font-bold transition-colors">
+                            Play Now
+                        </a>
+                    </div>
+                </div>
+                <!-- GAME BLOCK END -->
+
+                <!-- GAME BLOCK START -->
+                <div class="bg-mellors-gray rounded-xl overflow-hidden card-hover group relative">
+                    <div class="h-48 bg-gray-800 relative overflow-hidden">
+                        <img src="https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop" alt="Game Title" class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
+                    </div>
+                    <div class="p-5">
+                        <h4 class="text-lg font-bold text-white mb-1">Retro Quest</h4>
+                        <p class="text-gray-400 text-sm mb-4 line-clamp-2">
+                            A classic pixel-art adventure for the nostalgic soul.
+                        </p>
+                        <!-- YOUR LINK HERE -->
+                        <a href="#" class="block w-full py-2 bg-gray-800 hover:bg-mellors-cyan hover:text-black text-center rounded-lg text-sm font-bold transition-colors">
+                            Play Now
+                        </a>
+                    </div>
+                </div>
+                <!-- GAME BLOCK END -->
+
+            </div>
+            <!-- ********************************************** -->
+            <!--          END OF LINK BLOCKS                    -->
+            <!-- ********************************************** -->
+
+            <!-- FOOTER -->
+            <footer class="mt-auto border-t border-gray-800 pt-8 pb-4 text-center text-gray-500 text-sm">
+                <div class="flex justify-center gap-6 mb-4">
+                    <a href="#" class="hover:text-mellors-cyan transition"><i class="fab fa-discord text-xl"></i></a>
+                    <a href="#" class="hover:text-mellors-cyan transition"><i class="fab fa-twitter text-xl"></i></a>
+                    <a href="#" class="hover:text-mellors-cyan transition"><i class="fab fa-instagram text-xl"></i></a>
+                </div>
+                <p>&copy; 2024 Mellors Games. All rights reserved.</p>
+            </footer>
+
+        </div>
+    </main>
+
+    <!-- Sidebar Toggle JS -->
+    <script>
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('overlay');
+
+        function toggleMenu() {
+            // Toggle translate class
+            if (sidebar.classList.contains('-translate-x-full')) {
+                // OPEN
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                // CLOSE
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

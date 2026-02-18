@@ -697,7 +697,7 @@ function createCreature(x, z) {
   state.creatures.push(creature);
   state.creatureActive = true;
   
-  showMessage("You feel a dark presence watching you...", 4000);
+  showMessage("", 4000);
   playCreatureSound();
   
   return creature;
@@ -1218,7 +1218,7 @@ function updateDayNight(dt) {
   state.isNight = dayProgress > 0.5 && dayProgress < 0.95;
   
   if (state.isNight && !wasNight) {
-    showMessage("Night falls... something stirs in the darkness.", 4000);
+    showMessage("Night falls...", 4000);
     playAmbientNight();
   }
   if (!state.isNight && wasNight) {

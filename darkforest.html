@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dark Forest - Survival</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
+canvas { display: block; }
+#blocker {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.85); z-index: 100;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+  cursor: pointer;
+}
+#blocker h1 {
+  color: #8b0000; font-size: 4em; text-shadow: 0 0 20px #ff0000, 0 0 40px #8b0000;
+  letter-spacing: 8px; margin-bottom: 20px; animation: flicker 3s infinite;
+}
+#blocker p { color: #aaa; font-size: 1.2em; max-width: 500px; text-align: center; line-height: 1.8; }
+#blocker .hint { color: #666; font-size: 0.9em; margin-top: 30px; }
+@keyframes flicker {
+  0%,100% { opacity: 1; } 50% { opacity: 0.8; } 52% { opacity: 1; } 54% { opacity: 0.7; } 56% { opacity: 1; }
+}
+#hud {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 10;
+}
+#crosshair {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 24px; height: 24px; z-index: 11;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(255,255,255,0.7);
+}
+#crosshair::before { width: 2px; height: 24px; left: 11px; top: 0; }
+#crosshair::after { width: 24px; height: 2px; left: 0; top: 11px; }
+#hotbar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 4px; z-index: 11;
+}
+.hotbar-slot {
+  width: 50px; height: 50px; background: rgba(0,0,0,0.6);
+  border: 2px solid #555; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 12px; flex-direction: column;
+  position: relative;
+}
+.hotbar-slot.active { border-color: #fff; background: rgba(50,50,50,0.8); }
+.hotbar-slot .count {
+  position: absolute; bottom: 2px; right: 4px; font-size: 10px; color: #ff0;
+}
+.hotbar-slot .label { font-size: 9px; color: #aaa; }
+#stats {
+  position: fixed; top: 15px; left: 15px; color: #fff; z-index: 11;
+  text-shadow: 1px 1px 2px #000;
+}
+#stats div { margin: 4px 0; font-size: 14px; }
+.bar-bg {
+  width: 180px; height: 14px; background: rgba(0,0,0,0.5);
+  border: 1px solid #333; display: inline-block; vertical-align: middle; margin-left: 6px;
+}
+.bar-fill { height: 100%; transition: width 0.3s; }
+#health-fill { background: linear-gradient(to right, #8b0000, #ff0000); width: 100%; }
+#time-display {
+  position: fixed; top: 15px; right: 15px; color: #fff; z-index: 11;
+  font-size: 16px; text-shadow: 1px 1px 2px #000; text-align: right;
+}
+#time-display .day { font-size: 20px; }
+#message {
+  position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%);
+  color: #ff4444; font-size: 1.4em; z-index: 11;
+  text-shadow: 0 0 10px #ff0000; opacity: 0; transition: opacity 0.5s;
+  text-align: center; pointer-events: none;
+}
+#jumpscare {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 1000; display: none; align-items: center; justify-content: center;
+  background: #000; cursor: pointer;
+}
+#jumpscare canvas { width: 100%; height: 100%; }
+#death-text {
+  position: fixed; top: 60%; left: 50%; transform: translate(-50%,-50%);
+  color: #8b0000; font-size: 3em; z-index: 1001; display: none;
+  text-shadow: 0 0 30px #ff0000; letter-spacing: 6px;
+  animation: pulse 1s infinite;
+}
+@keyframes pulse { 0%,100%{ opacity:1; } 50%{ opacity:0.5; } }
+#vignette {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 9;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.5) 100%);
+  transition: background 2s;
+}
+#fear-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 8; opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(80,0,0,0.6) 100%);
+  transition: opacity 0.5s;
+}
+#build-preview {
+  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+  color: #aaa; font-size: 12px; z-index: 11; text-align: center;
+  text-shadow: 1px 1px 2px #000;
+}
+</style>
+</head>
+<body>
+<div id="blocker">
+  <h1>DARK FOREST</h1>
+  <p>You awaken in a dark forest. Gather wood from trees. Build shelter. Survive.</p>
+  <p style="color:#666; margin-top:10px;">But beware... you are not alone when darkness falls.</p>
+  <p class="hint">[ Click to Begin ]</p>
+  <p style="color:#555; font-size:11px; margin-top:15px;">WASD - Move | SPACE - Jump | LEFT CLICK - Mine/Place | 1-4 - Select Item | SHIFT - Sprint</p>
+</div>
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="stats">
+    <div>❤️ Health <div class="bar-bg"><div class="bar-fill" id="health-fill"></div></div></div>
+  </div>
+  <div id="time-display">
+    <div class="day" id="day-counter">Day 1</div>
+    <div id="time-text">☀️ Morning</div>
+  </div>
+  <div id="hotbar">
+    <div class="hotbar-slot active" id="slot0"><span class="label">Hand</span><span class="count" id="count0"></span></div>
+    <div class="hotbar-slot" id="slot1"><span class="label">Wood</span><span class="count" id="count1">0</span></div>
+    <div class="hotbar-slot" id="slot2"><span class="label">Wall</span><span class="count" id="count2">-</span></div>
+    <div class="hotbar-slot" id="slot3"><span class="label">Floor</span><span class="count" id="count3">-</span></div>
+  </div>
+  <div id="build-preview"></div>
+  <div id="message"></div>
+</div>
+<div id="vignette"></div>
+<div id="fear-overlay"></div>
+<div id="jumpscare"><canvas id="scare-canvas"></canvas></div>
+<div id="death-text">YOU DIED</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ==================== AUDIO ENGINE ====================
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function initAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+}
+
+function playTone(freq, duration, type='sine', vol=0.3, detune=0) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  osc.detune.value = detune;
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playChop() { playTone(200, 0.1, 'square', 0.15); playTone(150, 0.08, 'sawtooth', 0.1); }
+function playPlace() { playTone(400, 0.15, 'square', 0.1); playTone(500, 0.1, 'sine', 0.08); }
+function playPickup() { playTone(600, 0.1, 'sine', 0.15); playTone(800, 0.1, 'sine', 0.1); }
+
+function playAmbientNight() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  for (let i = 0; i < 3; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 40 + Math.random() * 30;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.06, now + 1);
+    gain.gain.linearRampToValueAtTime(0, now + 4);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now + i * 0.5); osc.stop(now + 4);
+  }
+}
+
+function playCreatureSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  for (let i = 0; i < 5; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+    osc.frequency.setValueAtTime(80 + Math.random() * 60, now);
+    osc.frequency.linearRampToValueAtTime(30, now + 2);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.linearRampToValueAtTime(0, now + 2);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now + i * 0.3); osc.stop(now + 2.5);
+  }
+}
+
+function playChaseMusic() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  [60, 63, 58, 55].forEach((note, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = note;
+    gain.gain.setValueAtTime(0.12, now + i * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.3);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now + i * 0.15); osc.stop(now + i * 0.15 + 0.35);
+  });
+}
+
+function playJumpscareSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  // Massive distorted scream
+  for (let i = 0; i < 12; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const distortion = audioCtx.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let j = 0; j < 256; j++) { const x = (j * 2) / 256 - 1; curve[j] = (Math.PI + 200) * x / (Math.PI + 200 * Math.abs(x)); }
+    distortion.curve = curve;
+    osc.type = ['sawtooth', 'square', 'triangle'][i % 3];
+    osc.frequency.setValueAtTime(100 + i * 80 + Math.random() * 200, now);
+    osc.frequency.linearRampToValueAtTime(50 + Math.random() * 500, now + 0.5);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.linearRampToValueAtTime(0.15, now + 1.5);
+    gain.gain.linearRampToValueAtTime(0, now + 2);
+    osc.connect(distortion); distortion.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(now); osc.stop(now + 2);
+  }
+  // Low boom
+  const boom = audioCtx.createOscillator();
+  const bGain = audioCtx.createGain();
+  boom.type = 'sine'; boom.frequency.value = 30;
+  bGain.gain.setValueAtTime(0.6, now);
+  bGain.gain.linearRampToValueAtTime(0, now + 1.5);
+  boom.connect(bGain); bGain.connect(audioCtx.destination);
+  boom.start(now); boom.stop(now + 1.5);
+}
+
+function playAnimalSound(type) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  if (type === 'pig') {
+    const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, now);
+    osc.frequency.linearRampToValueAtTime(350, now + 0.15);
+    osc.frequency.linearRampToValueAtTime(180, now + 0.3);
+    g.gain.setValueAtTime(0.06, now); g.gain.linearRampToValueAtTime(0, now + 0.35);
+    osc.connect(g); g.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.4);
+  } else if (type === 'cow') {
+    const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, now);
+    osc.frequency.linearRampToValueAtTime(130, now + 0.4);
+    osc.frequency.linearRampToValueAtTime(90, now + 0.8);
+    g.gain.setValueAtTime(0.05, now); g.gain.linearRampToValueAtTime(0, now + 0.9);
+    osc.connect(g); g.connect(audioCtx.destination); osc.start(now); osc.stop(now + 1);
+  } else {
+    const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    osc.type = 'triangle'; osc.frequency.setValueAtTime(300, now);
+    osc.frequency.linearRampToValueAtTime(500, now + 0.2);
+    g.gain.setValueAtTime(0.05, now); g.gain.linearRampToValueAtTime(0, now + 0.3);
+    osc.connect(g); g.connect(audioCtx.destination); osc.start(now); osc.stop(now + 0.35);
+  }
+}
+
+// ==================== NOISE / TERRAIN ====================
+class SimplexNoise {
+  constructor(seed = Math.random() * 65536) {
+    this.p = new Uint8Array(512);
+    const perm = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) perm[i] = i;
+    let s = seed | 1;
+    for (let i = 255; i > 0; i--) {
+      s = (s * 16807 + 0) % 2147483647;
+      const j = s % (i + 1);
+      [perm[i], perm[j]] = [perm[j], perm[i]];
+    }
+    for (let i = 0; i < 512; i++) this.p[i] = perm[i & 255];
+  }
+  noise2D(x, y) {
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    const s = (x + y) * F2;
+    const i = Math.floor(x + s), j = Math.floor(y + s);
+    const t = (i + j) * G2;
+    const x0 = x - (i - t), y0 = y - (j - t);
+    const i1 = x0 > y0 ? 1 : 0, j1 = x0 > y0 ? 0 : 1;
+    const x1 = x0 - i1 + G2, y1 = y0 - j1 + G2;
+    const x2 = x0 - 1 + 2 * G2, y2 = y0 - 1 + 2 * G2;
+    const ii = i & 255, jj = j & 255;
+    const grad = (hash, gx, gy) => {
+      const h = hash & 7;
+      const u = h < 4 ? gx : gy;
+      const v = h < 4 ? gy : gx;
+      return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+    };
+    let n0 = 0, n1 = 0, n2 = 0;
+    let t0 = 0.5 - x0 * x0 - y0 * y0;
+    if (t0 >= 0) { t0 *= t0; n0 = t0 * t0 * grad(this.p[ii + this.p[jj]], x0, y0); }
+    let t1 = 0.5 - x1 * x1 - y1 * y1;
+    if (t1 >= 0) { t1 *= t1; n1 = t1 * t1 * grad(this.p[ii + i1 + this.p[jj + j1]], x1, y1); }
+    let t2 = 0.5 - x2 * x2 - y2 * y2;
+    if (t2 >= 0) { t2 *= t2; n2 = t2 * t2 * grad(this.p[ii + 1 + this.p[jj + 1]], x2, y2); }
+    return 70 * (n0 + n1 + n2);
+  }
+}
+
+const simplex = new SimplexNoise(42);
+
+function getTerrainHeight(x, z) {
+  const scale1 = 0.008, scale2 = 0.025, scale3 = 0.06;
+  let h = simplex.noise2D(x * scale1, z * scale1) * 25;
+  h += simplex.noise2D(x * scale2, z * scale2) * 10;
+  h += simplex.noise2D(x * scale3, z * scale3) * 4;
+  return h;
+}
+
+// ==================== GAME STATE ====================
+const state = {
+  health: 100,
+  wood: 0,
+  selectedSlot: 0,
+  gameTime: 0, // seconds
+  dayLength: 360, // 6 min full cycle, night at 3min
+  day: 1,
+  isNight: false,
+  nightStart: 180,
+  playing: false,
+  dead: false,
+  creatures: [],
+  animals: [],
+  trees: [],
+  builtBlocks: [],
+  treeMap: new Map(),
+  chunkSize: 80,
+  loadedChunks: new Set(),
+  messages: [],
+  lastCreatureSpawn: 0,
+  creatureActive: false,
+  fearLevel: 0,
+  nightAmbientTimer: 0,
+  chaseMusicTimer: 0,
+};
+
+// ==================== THREE.JS SETUP ====================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.FogExp2(0x87CEEB, 0.008);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 500);
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+sunLight.position.set(100, 150, 50);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(1024, 1024);
+sunLight.shadow.camera.left = -80;
+sunLight.shadow.camera.right = 80;
+sunLight.shadow.camera.top = 80;
+sunLight.shadow.camera.bottom = -80;
+scene.add(sunLight);
+
+// ==================== TERRAIN SYSTEM ====================
+const terrainChunks = new Map();
+const CHUNK = 80;
+
+function createTerrainChunk(cx, cz) {
+  const key = `${cx},${cz}`;
+  if (terrainChunks.has(key)) return;
+  
+  const res = 40;
+  const geo = new THREE.PlaneGeometry(CHUNK, CHUNK, res, res);
+  geo.rotateX(-Math.PI / 2);
+  const positions = geo.attributes.position.array;
+  const colors = new Float32Array(positions.length);
+  
+  for (let i = 0; i < positions.length; i += 3) {
+    const wx = positions[i] + cx * CHUNK;
+    const wz = positions[i + 2] + cz * CHUNK;
+    const h = getTerrainHeight(wx, wz);
+    positions[i + 1] = h;
+    
+    // Color based on height
+    const t = (h + 25) / 50;
+    if (h < -5) { colors[i] = 0.2; colors[i+1] = 0.35; colors[i+2] = 0.15; }
+    else if (h < 5) { colors[i] = 0.15 + t * 0.15; colors[i+1] = 0.4 + t * 0.2; colors[i+2] = 0.1; }
+    else { colors[i] = 0.25; colors[i+1] = 0.5; colors[i+2] = 0.15; }
+  }
+  
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(cx * CHUNK, 0, cz * CHUNK);
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  terrainChunks.set(key, mesh);
+  
+  // Generate trees for this chunk
+  generateTreesForChunk(cx, cz);
+}
+
+function removeTerrainChunk(cx, cz) {
+  const key = `${cx},${cz}`;
+  const mesh = terrainChunks.get(key);
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); terrainChunks.delete(key); }
+  // Remove trees in chunk
+  const treeKey = `t${cx},${cz}`;
+  const trees = state.treeMap.get(treeKey);
+  if (trees) {
+    trees.forEach(t => {
+      scene.remove(t.group);
+      state.trees = state.trees.filter(st => st !== t);
+    });
+    state.treeMap.delete(treeKey);
+  }
+}
+
+function updateChunks(px, pz) {
+  const pcx = Math.floor(px / CHUNK);
+  const pcz = Math.floor(pz / CHUNK);
+  const range = 3;
+  const needed = new Set();
+  
+  for (let dx = -range; dx <= range; dx++) {
+    for (let dz = -range; dz <= range; dz++) {
+      const cx = pcx + dx, cz = pcz + dz;
+      const key = `${cx},${cz}`;
+      needed.add(key);
+      createTerrainChunk(cx, cz);
+    }
+  }
+  
+  for (const [key, mesh] of terrainChunks) {
+    if (!needed.has(key)) {
+      const [cx, cz] = key.split(',').map(Number);
+      removeTerrainChunk(cx, cz);
+    }
+  }
+}
+
+// ==================== TREE SYSTEM ====================
+function createTree(x, z) {
+  const group = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  
+  // Trunk
+  const trunkH = 4 + Math.random() * 4;
+  const trunkGeo = new THREE.CylinderGeometry(0.3, 0.5, trunkH, 6);
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3222 });
+  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  trunk.position.y = trunkH / 2;
+  trunk.castShadow = true;
+  group.add(trunk);
+  
+  // Leaves - multiple layers
+  const leafColor = new THREE.Color().setHSL(0.28 + Math.random() * 0.06, 0.5 + Math.random() * 0.3, 0.2 + Math.random() * 0.15);
+  for (let i = 0; i < 3; i++) {
+    const leafSize = 3 - i * 0.6;
+    const leafGeo = new THREE.ConeGeometry(leafSize, 3, 6);
+    const leafMat = new THREE.MeshLambertMaterial({ color: leafColor });
+    const leaf = new THREE.Mesh(leafGeo, leafMat);
+    leaf.position.y = trunkH - 1 + i * 2;
+    leaf.castShadow = true;
+    group.add(leaf);
+  }
+  
+  group.position.set(x, h, z);
+  scene.add(group);
+  
+  const treeData = { group, x, z, y: h, health: 3, trunkH };
+  state.trees.push(treeData);
+  return treeData;
+}
+
+function generateTreesForChunk(cx, cz) {
+  const key = `t${cx},${cz}`;
+  if (state.treeMap.has(key)) return;
+  
+  const trees = [];
+  const density = 15 + Math.floor(Math.random() * 15);
+  const baseX = cx * CHUNK - CHUNK / 2;
+  const baseZ = cz * CHUNK - CHUNK / 2;
+  
+  // Use seeded random for consistent tree placement
+  let seed = (cx * 73856093) ^ (cz * 19349663);
+  const seededRandom = () => { seed = (seed * 16807 + 0) % 2147483647; return (seed & 0x7fffffff) / 0x7fffffff; };
+  
+  for (let i = 0; i < density; i++) {
+    const tx = baseX + seededRandom() * CHUNK;
+    const tz = baseZ + seededRandom() * CHUNK;
+    const h = getTerrainHeight(tx, tz);
+    if (h > -8 && h < 20) {
+      trees.push(createTree(tx, tz));
+    }
+  }
+  state.treeMap.set(key, trees);
+}
+
+// ==================== ANIMAL SYSTEM ====================
+function createAnimal(type, x, z) {
+  const group = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  
+  let bodyColor, bodyW, bodyH, bodyD, legH;
+  if (type === 'pig') {
+    bodyColor = 0xE8A0A0; bodyW = 0.8; bodyH = 0.6; bodyD = 1.2; legH = 0.4;
+  } else if (type === 'cow') {
+    bodyColor = 0x8B7355; bodyW = 1; bodyH = 0.8; bodyD = 1.6; legH = 0.6;
+  } else {
+    bodyColor = 0xEEEEEE; bodyW = 0.7; bodyH = 0.6; bodyD = 1; legH = 0.4;
+  }
+  
+  // Body
+  const bodyGeo = new THREE.BoxGeometry(bodyW, bodyH, bodyD);
+  const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = legH + bodyH / 2;
+  body.castShadow = true;
+  group.add(body);
+  
+  // Head
+  const headGeo = new THREE.BoxGeometry(bodyW * 0.6, bodyH * 0.7, bodyW * 0.5);
+  const head = new THREE.Mesh(headGeo, bodyMat);
+  head.position.set(0, legH + bodyH * 0.8, bodyD / 2 + bodyW * 0.2);
+  group.add(head);
+  
+  // Legs
+  const legGeo = new THREE.BoxGeometry(0.15, legH, 0.15);
+  const legMat = new THREE.MeshLambertMaterial({ color: type === 'cow' ? 0x444444 : bodyColor });
+  [[-bodyW/3, 0, -bodyD/3], [bodyW/3, 0, -bodyD/3], [-bodyW/3, 0, bodyD/3], [bodyW/3, 0, bodyD/3]].forEach(pos => {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(pos[0], legH / 2, pos[2]);
+    group.add(leg);
+  });
+  
+  group.position.set(x, h, z);
+  scene.add(group);
+  
+  const animal = {
+    group, type, x, z, y: h,
+    vx: 0, vz: 0,
+    moveTimer: Math.random() * 5,
+    soundTimer: 5 + Math.random() * 15,
+    spawnTime: state.gameTime,
+    lifetime: 60 + Math.random() * 60,
+    walkAnim: 0
+  };
+  state.animals.push(animal);
+  return animal;
+}
+
+function updateAnimals(dt) {
+  // Spawn animals
+  if (state.animals.length < 12 && Math.random() < 0.01) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 30 + Math.random() * 60;
+    const ax = camera.position.x + Math.cos(angle) * dist;
+    const az = camera.position.z + Math.sin(angle) * dist;
+    const types = ['pig', 'sheep', 'cow'];
+    createAnimal(types[Math.floor(Math.random() * 3)], ax, az);
+  }
+  
+  for (let i = state.animals.length - 1; i >= 0; i--) {
+    const a = state.animals[i];
+    
+    // Despawn if too far or lifetime exceeded
+    const dx = a.group.position.x - camera.position.x;
+    const dz = a.group.position.z - camera.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    
+    if (dist > 120 || (state.gameTime - a.spawnTime) > a.lifetime) {
+      scene.remove(a.group);
+      state.animals.splice(i, 1);
+      continue;
+    }
+    
+    // Movement
+    a.moveTimer -= dt;
+    if (a.moveTimer <= 0) {
+      a.moveTimer = 2 + Math.random() * 5;
+      if (Math.random() < 0.6) {
+        const angle = Math.random() * Math.PI * 2;
+        a.vx = Math.cos(angle) * 1.5;
+        a.vz = Math.sin(angle) * 1.5;
+      } else {
+        a.vx = 0; a.vz = 0;
+      }
+    }
+    
+    // Sound
+    a.soundTimer -= dt;
+    if (a.soundTimer <= 0) {
+      a.soundTimer = 8 + Math.random() * 20;
+      if (dist < 40) playAnimalSound(a.type);
+    }
+    
+    a.group.position.x += a.vx * dt;
+    a.group.position.z += a.vz * dt;
+    a.group.position.y = getTerrainHeight(a.group.position.x, a.group.position.z);
+    
+    if (a.vx !== 0 || a.vz !== 0) {
+      a.group.rotation.y = Math.atan2(a.vx, a.vz);
+      a.walkAnim += dt * 8;
+      // Leg animation approximation via slight body bob
+      a.group.position.y += Math.abs(Math.sin(a.walkAnim)) * 0.1;
+    }
+  }
+}
+
+// ==================== CREATURE SYSTEM ====================
+function createCreature(x, z) {
+  const group = new THREE.Group();
+  const h = getTerrainHeight(x, z);
+  
+  // Tall, thin, dark figure
+  // Body
+  const bodyGeo = new THREE.BoxGeometry(0.8, 3.5, 0.5);
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 3;
+  group.add(body);
+  
+  // Head - slightly larger, unsettling
+  const headGeo = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+  const headMat = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 5.2;
+  group.add(head);
+  
+  // Glowing red eyes
+  const eyeGeo = new THREE.SphereGeometry(0.1, 6, 6);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+  leftEye.position.set(-0.2, 5.3, 0.45);
+  group.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+  rightEye.position.set(0.2, 5.3, 0.45);
+  group.add(rightEye);
+  
+  // Long arms
+  const armGeo = new THREE.BoxGeometry(0.2, 3, 0.2);
+  const armMat = new THREE.MeshLambertMaterial({ color: 0x0a0a0a });
+  const leftArm = new THREE.Mesh(armGeo, armMat);
+  leftArm.position.set(-0.6, 2.5, 0);
+  leftArm.rotation.z = 0.15;
+  group.add(leftArm);
+  const rightArm = new THREE.Mesh(armGeo, armMat);
+  rightArm.position.set(0.6, 2.5, 0);
+  rightArm.rotation.z = -0.15;
+  group.add(rightArm);
+  
+  // Thin legs
+  const legGeo = new THREE.BoxGeometry(0.25, 2, 0.25);
+  const leftLeg = new THREE.Mesh(legGeo, armMat);
+  leftLeg.position.set(-0.25, 1, 0);
+  group.add(leftLeg);
+  const rightLeg = new THREE.Mesh(legGeo, armMat);
+  rightLeg.position.set(0.25, 1, 0);
+  group.add(rightLeg);
+  
+  // Eye glow light
+  const eyeLight = new THREE.PointLight(0xff0000, 2, 15);
+  eyeLight.position.set(0, 5.3, 0.5);
+  group.add(eyeLight);
+  
+  group.position.set(x, h, z);
+  scene.add(group);
+  
+  const creature = {
+    group, x, z, y: h,
+    spawnTime: state.gameTime,
+    chasing: false,
+    speed: 5,
+    lifetime: 60,
+    leftArm, rightArm, leftLeg, rightLeg, head,
+    walkAnim: 0,
+    soundTimer: 0,
+    noticed: false,
+    lookCount: 0,
+    playerLookingLastFrame: false,
+    chaseCooldown: 0
+  };
+  state.creatures.push(creature);
+  state.creatureActive = true;
+  
+  showMessage("You feel a dark presence watching you...", 4000);
+  playCreatureSound();
+  
+  return creature;
+}
+
+function updateCreatures(dt) {
+  if (!state.isNight) {
+    // Despawn all creatures at dawn
+    state.creatures.forEach(c => scene.remove(c.group));
+    state.creatures = [];
+    state.creatureActive = false;
+    return;
+  }
+  
+  // Spawn creature randomly during night
+  if (state.creatures.length === 0 && state.isNight) {
+    const timeSinceNight = state.gameTime - state.nightStart * (state.day - (state.gameTime > state.nightStart ? 0 : 1));
+    const nightElapsed = state.gameTime % state.dayLength - state.nightStart;
+    
+    if (nightElapsed > 10 && Math.random() < 0.002) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 50 + Math.random() * 30;
+      const cx = camera.position.x + Math.cos(angle) * dist;
+      const cz = camera.position.z + Math.sin(angle) * dist;
+      createCreature(cx, cz);
+    }
+  }
+  
+  for (let i = state.creatures.length - 1; i >= 0; i--) {
+    const c = state.creatures[i];
+    const dx = camera.position.x - c.group.position.x;
+    const dz = camera.position.z - c.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    
+    // Despawn conditions
+    const alive = state.gameTime - c.spawnTime;
+    if (dist > 100 || alive > c.lifetime) {
+      scene.remove(c.group);
+      state.creatures.splice(i, 1);
+      state.creatureActive = state.creatures.length > 0;
+      if (!state.creatureActive) { state.fearLevel = 0; }
+      continue;
+    }
+    
+    // Chase triggers: proximity AND look-based
+    c.chaseCooldown -= dt;
+    if (!c.chasing) {
+      // PROXIMITY TRIGGER: getting too close always triggers a chase
+      if (dist < 15) {
+        c.chasing = true;
+        c.noticed = true;
+        c.speed = 7;
+        showMessage("", 3000);
+        playCreatureSound();
+      }
+      // LOOK-BASED TRIGGER: looking at it from further away
+      else if (dist < 80) {
+        // Check if player is looking at the creature
+        const lookDir = new THREE.Vector3(0, 0, -1);
+        lookDir.applyQuaternion(camera.quaternion);
+        const toCreature = new THREE.Vector3(
+          c.group.position.x - camera.position.x,
+          (c.group.position.y + 3) - camera.position.y,
+          c.group.position.z - camera.position.z
+        ).normalize();
+        const dotProduct = lookDir.dot(toCreature);
+        const isLooking = dotProduct > 0.92; // ~23 degree cone
+        
+        if (isLooking && !c.playerLookingLastFrame && c.chaseCooldown <= 0) {
+          // Player just started looking at the creature — count it
+          c.lookCount++;
+          c.chaseCooldown = 1.5; // prevent rapid re-triggers
+          
+          if (c.lookCount <= 3) {
+            // First 3 looks are free — just creepy messages
+            if (c.lookCount === 1) showMessage("", 2500);
+            else if (c.lookCount === 2) showMessage("I SEE YOU", 2500);
+            else if (c.lookCount === 3) showMessage("...", 3000);
+            playCreatureSound();
+          } else {
+            // After 3 free looks, 30% chance to trigger chase
+            if (Math.random() < 0.3) {
+              c.chasing = true;
+              c.noticed = true;
+              c.speed = 7;
+              showMessage("HEY", 3000);
+              playCreatureSound();
+            } else {
+              // Didn't chase this time — still unsettling
+              const msgs = ["", "i know where you live", "...", "run", "", ""];
+              showMessage(msgs[Math.floor(Math.random() * msgs.length)], 2500);
+              playCreatureSound();
+            }
+          }
+        }
+        c.playerLookingLastFrame = isLooking;
+      }
+    }
+    
+    if (c.chasing) {
+      // Move toward player
+      const angle = Math.atan2(dx, dz);
+      c.group.position.x += Math.sin(angle) * c.speed * dt;
+      c.group.position.z += Math.cos(angle) * c.speed * dt;
+      c.group.position.y = getTerrainHeight(c.group.position.x, c.group.position.z);
+      c.group.rotation.y = angle;
+      
+      // Walk animation
+      c.walkAnim += dt * 10;
+      c.leftArm.rotation.x = Math.sin(c.walkAnim) * 0.8;
+      c.rightArm.rotation.x = -Math.sin(c.walkAnim) * 0.8;
+      c.leftLeg.rotation.x = -Math.sin(c.walkAnim) * 0.6;
+      c.rightLeg.rotation.x = Math.sin(c.walkAnim) * 0.6;
+      c.head.rotation.z = Math.sin(c.walkAnim * 0.5) * 0.1;
+      
+      // Fear effect
+      state.fearLevel = Math.min(1, (25 - dist) / 20);
+      
+      // Chase music
+      c.soundTimer -= dt;
+      if (c.soundTimer <= 0) {
+        c.soundTimer = 0.6;
+        playChaseMusic();
+      }
+      
+      // Kill player if too close
+      if (dist < 3) {
+        killPlayer();
+        return;
+      }
+      
+      // Stop chasing if player gets far enough
+      if (dist > 50) {
+        c.chasing = false;
+        c.speed = 3;
+        state.fearLevel = 0;
+      }
+    } else {
+      // Idle - face player slowly, wander
+      const angle = Math.atan2(dx, dz);
+      c.group.rotation.y += (angle - c.group.rotation.y) * 0.02;
+      
+      // Slight sway
+      c.walkAnim += dt * 2;
+      c.group.position.y = getTerrainHeight(c.group.position.x, c.group.position.z) + Math.sin(c.walkAnim) * 0.1;
+      c.head.rotation.z = Math.sin(c.walkAnim * 0.7) * 0.05;
+      
+      // Slowly approach
+      if (dist > 20) {
+        c.group.position.x += Math.sin(angle) * 1.5 * dt;
+        c.group.position.z += Math.cos(angle) * 1.5 * dt;
+      }
+      
+      if (dist < 45) {
+        state.fearLevel = Math.max(0, (45 - dist) / 60);
+      }
+      
+      c.soundTimer -= dt;
+      if (c.soundTimer <= 0) {
+        c.soundTimer = 4 + Math.random() * 5;
+        if (dist < 60) playCreatureSound();
+      }
+    }
+  }
+}
+
+// ==================== JUMPSCARE / DEATH ====================
+function killPlayer() {
+  state.dead = true;
+  state.playing = false;
+  document.exitPointerLock();
+  
+  playJumpscareSound();
+  
+  const jumpscareEl = document.getElementById('jumpscare');
+  const deathText = document.getElementById('death-text');
+  jumpscareEl.style.display = 'flex';
+  
+  // Draw jumpscare face on canvas
+  const canvas = document.getElementById('scare-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+  
+  // Animate jumpscare
+  let frame = 0;
+  const animateJumpscare = () => {
+    frame++;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const shake = frame < 30 ? (Math.random() - 0.5) * 40 : 0;
+    const cx = canvas.width / 2 + shake;
+    const cy = canvas.height / 2 + shake * 0.5;
+    const scale = frame < 10 ? 0.5 + frame * 0.15 : 1.8 + Math.sin(frame * 0.2) * 0.1;
+    
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+    
+    // Dark face
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 120, 150, 0, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Glowing red eyes
+    const eyeFlicker = 0.7 + Math.sin(frame * 0.5) * 0.3;
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 40;
+    ctx.fillStyle = `rgba(255, 0, 0, ${eyeFlicker})`;
+    
+    // Left eye - distorted
+    ctx.beginPath();
+    ctx.ellipse(-40 + Math.sin(frame * 0.3) * 3, -20, 25, 15 + Math.sin(frame * 0.7) * 5, Math.sin(frame * 0.1) * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Right eye
+    ctx.beginPath();
+    ctx.ellipse(40 + Math.cos(frame * 0.4) * 3, -20, 25, 15 + Math.cos(frame * 0.6) * 5, -Math.sin(frame * 0.1) * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Pupils
+    ctx.fillStyle = '#000';
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(-40, -20, 8, 0, Math.PI * 2);
+    ctx.arc(40, -20, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Mouth - wide, jagged
+    ctx.fillStyle = '#0a0a0a';
+    ctx.shadowColor = '#880000';
+    ctx.shadowBlur = 20;
+    ctx.beginPath();
+    ctx.moveTo(-60, 40);
+    for (let i = 0; i <= 12; i++) {
+      const mx = -60 + i * 10;
+      const my = 40 + (i % 2 === 0 ? -8 : 8) + Math.sin(frame * 0.3 + i) * 3;
+      ctx.lineTo(mx, my);
+    }
+    ctx.lineTo(60, 80);
+    ctx.lineTo(-60, 80);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Teeth
+    ctx.fillStyle = '#ddd';
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < 10; i++) {
+      const tx = -50 + i * 11;
+      const th = 8 + Math.random() * 6;
+      ctx.fillRect(tx, 42, 6, th);
+      ctx.fillRect(tx, 70 - th, 6, th);
+    }
+    
+    ctx.restore();
+    
+    // Screen flash
+    if (frame < 5) {
+      ctx.fillStyle = `rgba(255,0,0,${0.5 - frame * 0.1})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+    
+    // Static noise
+    if (frame % 3 === 0) {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let p = 0; p < imgData.data.length; p += 4) {
+        if (Math.random() < 0.05) {
+          const noise = Math.random() * 50;
+          imgData.data[p] += noise;
+          imgData.data[p + 1] += noise * 0.2;
+          imgData.data[p + 2] += noise * 0.2;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+    
+    if (frame < 120) {
+      requestAnimationFrame(animateJumpscare);
+    } else {
+      deathText.style.display = 'block';
+      jumpscareEl.onclick = () => location.reload();
+    }
+  };
+  animateJumpscare();
+}
+
+// ==================== BUILDING SYSTEM ====================
+function getBlockPreview() {
+  if (state.selectedSlot === 2) return 'wall';
+  if (state.selectedSlot === 3) return 'floor';
+  return null;
+}
+
+function placeBlock() {
+  if (state.wood < 2) { showMessage("Need 2 wood!", 2000); return; }
+  const type = getBlockPreview();
+  if (!type) return;
+  
+  const dir = new THREE.Vector3(0, 0, -1);
+  dir.applyQuaternion(camera.quaternion);
+  const pos = camera.position.clone().add(dir.multiplyScalar(4));
+  
+  // Snap to grid
+  pos.x = Math.round(pos.x / 2) * 2;
+  pos.z = Math.round(pos.z / 2) * 2;
+  pos.y = getTerrainHeight(pos.x, pos.z);
+  
+  const blockRotation = Math.round(camera.rotation.y / (Math.PI / 2)) * (Math.PI / 2);
+  
+  let geo, mat;
+  if (type === 'wall') {
+    geo = new THREE.BoxGeometry(2, 3, 0.3);
+    mat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
+    pos.y += 1.5;
+  } else {
+    geo = new THREE.BoxGeometry(2, 0.2, 2);
+    mat = new THREE.MeshLambertMaterial({ color: 0x9B7924 });
+    pos.y += 0.1;
+  }
+  
+  // Check if the block would overlap with the player before placing
+  const tempBlock = { type, position: pos.clone(), mesh: { rotation: { y: blockRotation } } };
+  const aabb = getBlockAABB(tempBlock);
+  const playerFeetY = camera.position.y - PLAYER_HEIGHT;
+  const playerHeadY = camera.position.y;
+  const verticalOverlap = playerHeadY > aabb.minY && playerFeetY < aabb.maxY;
+  const horizontalOverlap = circleAABBOverlap(camera.position.x, camera.position.z, PLAYER_RADIUS + 0.1, aabb.minX, aabb.maxX, aabb.minZ, aabb.maxZ);
+  
+  if (verticalOverlap && horizontalOverlap) {
+    showMessage("Can't place here - too close!", 1500);
+    return;
+  }
+  
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(pos);
+  mesh.rotation.y = blockRotation;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  
+  state.builtBlocks.push({ mesh, type, position: pos.clone() });
+  state.wood -= 2;
+  updateHUD();
+  playPlace();
+}
+
+// ==================== PLAYER CONTROLS ====================
+const keys = {};
+const velocity = new THREE.Vector3();
+let playerY = 0;
+let verticalVelocity = 0;
+let onGround = true;
+let pitch = 0, yaw = 0;
+const GRAVITY = -20;
+const JUMP_FORCE = 8;
+const PLAYER_HEIGHT = 2;
+
+document.addEventListener('keydown', e => { keys[e.code] = true; });
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+document.getElementById('blocker').addEventListener('click', () => {
+  initAudio();
+  document.body.requestPointerLock();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  const locked = document.pointerLockElement === document.body;
+  document.getElementById('blocker').style.display = locked ? 'none' : 'flex';
+  if (locked && !state.dead) state.playing = true;
+});
+
+document.addEventListener('mousemove', e => {
+  if (!state.playing) return;
+  yaw -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch = Math.max(-Math.PI / 2.1, Math.min(Math.PI / 2.1, pitch));
+  
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = yaw;
+  camera.rotation.x = pitch;
+});
+
+document.addEventListener('mousedown', e => {
+  if (!state.playing) return;
+  if (e.button === 0) {
+    if (state.selectedSlot >= 2) {
+      placeBlock();
+    } else {
+      mineAction();
+    }
+  }
+});
+
+// Slot selection
+document.addEventListener('keydown', e => {
+  if (e.code === 'Digit1') selectSlot(0);
+  if (e.code === 'Digit2') selectSlot(1);
+  if (e.code === 'Digit3') selectSlot(2);
+  if (e.code === 'Digit4') selectSlot(3);
+});
+
+function selectSlot(n) {
+  state.selectedSlot = n;
+  document.querySelectorAll('.hotbar-slot').forEach((el, i) => {
+    el.classList.toggle('active', i === n);
+  });
+  updateBuildPreview();
+}
+
+function updateBuildPreview() {
+  const el = document.getElementById('build-preview');
+  if (state.selectedSlot === 0) el.textContent = 'Fist - Left click to mine trees';
+  else if (state.selectedSlot === 1) el.textContent = 'Wood - Resource';
+  else if (state.selectedSlot === 2) el.textContent = 'Wall - Left click to place (2 wood)';
+  else if (state.selectedSlot === 3) el.textContent = 'Floor - Left click to place (2 wood)';
+}
+updateBuildPreview();
+
+// ==================== MINING ====================
+function mineAction() {
+  playChop();
+  
+  const dir = new THREE.Vector3(0, 0, -1);
+  dir.applyQuaternion(camera.quaternion);
+  const ray = new THREE.Raycaster(camera.position, dir, 0, 6);
+  
+  // Check trees
+  let closestTree = null;
+  let closestDist = Infinity;
+  
+  for (const tree of state.trees) {
+    const dx = camera.position.x - tree.group.position.x;
+    const dz = camera.position.z - tree.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 6) {
+      // Raycast against tree trunk approx
+      const treeMeshes = [];
+      tree.group.traverse(child => { if (child.isMesh) treeMeshes.push(child); });
+      const hits = ray.intersectObjects(treeMeshes);
+      if (hits.length > 0 && hits[0].distance < closestDist) {
+        closestDist = hits[0].distance;
+        closestTree = tree;
+      }
+    }
+  }
+  
+  if (closestTree) {
+    closestTree.health--;
+    // Shake tree
+    const origX = closestTree.group.position.x;
+    closestTree.group.position.x += (Math.random() - 0.5) * 0.3;
+    setTimeout(() => { if (closestTree.group) closestTree.group.position.x = origX; }, 100);
+    
+    if (closestTree.health <= 0) {
+      // Tree destroyed, drop wood
+      const woodGained = 3 + Math.floor(Math.random() * 3);
+      state.wood += woodGained;
+      showMessage(`+${woodGained} Wood`, 1500);
+      playPickup();
+      
+      // Remove tree
+      scene.remove(closestTree.group);
+      state.trees = state.trees.filter(t => t !== closestTree);
+      
+      // Remove from chunk map too
+      for (const [key, trees] of state.treeMap) {
+        const idx = trees.indexOf(closestTree);
+        if (idx >= 0) { trees.splice(idx, 1); break; }
+      }
+      
+      updateHUD();
+    }
+  }
+}
+
+// ==================== UI HELPERS ====================
+function updateHUD() {
+  document.getElementById('health-fill').style.width = state.health + '%';
+  document.getElementById('count1').textContent = state.wood;
+  document.getElementById('count2').textContent = state.wood >= 2 ? '✓' : '✗';
+  document.getElementById('count3').textContent = state.wood >= 2 ? '✓' : '✗';
+}
+
+function showMessage(text, duration) {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.style.opacity = 1;
+  setTimeout(() => { el.style.opacity = 0; }, duration);
+}
+
+function updateTimeDisplay() {
+  const cycleTime = state.gameTime % state.dayLength;
+  const dayProgress = cycleTime / state.dayLength;
+  
+  let timeStr, icon;
+  if (dayProgress < 0.25) { timeStr = 'Morning'; icon = '☀️'; }
+  else if (dayProgress < 0.5) { timeStr = 'Afternoon'; icon = '🌤️'; }
+  else if (dayProgress < 0.55) { timeStr = 'Dusk'; icon = '🌅'; }
+  else if (dayProgress < 0.9) { timeStr = 'Night'; icon = '🌙'; }
+  else { timeStr = 'Dawn'; icon = '🌄'; }
+  
+  document.getElementById('time-text').textContent = `${icon} ${timeStr}`;
+  document.getElementById('day-counter').textContent = `Day ${state.day}`;
+}
+
+// ==================== DAY/NIGHT CYCLE ====================
+function updateDayNight(dt) {
+  state.gameTime += dt;
+  const cycleTime = state.gameTime % state.dayLength;
+  const dayProgress = cycleTime / state.dayLength;
+  
+  // Track day number
+  state.day = Math.floor(state.gameTime / state.dayLength) + 1;
+  
+  const wasNight = state.isNight;
+  state.isNight = dayProgress > 0.5 && dayProgress < 0.95;
+  
+  if (state.isNight && !wasNight) {
+    showMessage("Night falls... something stirs in the darkness.", 4000);
+    playAmbientNight();
+  }
+  if (!state.isNight && wasNight) {
+    showMessage("Dawn breaks. You survived the night.", 3000);
+    state.fearLevel = 0;
+  }
+  
+  // Ambient
+  let ambientIntensity, sunIntensity, fogDensity;
+  let skyColor, fogColor;
+  
+  if (dayProgress < 0.45) {
+    // Day
+    const t = dayProgress / 0.45;
+    ambientIntensity = 0.4 + t * 0.1;
+    sunIntensity = 0.7 + t * 0.2;
+    fogDensity = 0.006;
+    skyColor = new THREE.Color(0x87CEEB);
+    fogColor = new THREE.Color(0x87CEEB);
+  } else if (dayProgress < 0.55) {
+    // Sunset/sunrise transition
+    const t = (dayProgress - 0.45) / 0.1;
+    ambientIntensity = 0.5 - t * 0.4;
+    sunIntensity = 0.9 - t * 0.8;
+    fogDensity = 0.006 + t * 0.014;
+    skyColor = new THREE.Color(0x87CEEB).lerp(new THREE.Color(0x0a0a15), t);
+    fogColor = new THREE.Color(0x87CEEB).lerp(new THREE.Color(0x0a0a15), t);
+  } else if (dayProgress < 0.9) {
+    // Night
+    ambientIntensity = 0.08;
+    sunIntensity = 0.05;
+    fogDensity = 0.02;
+    skyColor = new THREE.Color(0x050510);
+    fogColor = new THREE.Color(0x050510);
+    
+    // Night ambient sounds
+    state.nightAmbientTimer -= dt;
+    if (state.nightAmbientTimer <= 0) {
+      state.nightAmbientTimer = 8 + Math.random() * 10;
+      playAmbientNight();
+    }
+  } else {
+    // Dawn
+    const t = (dayProgress - 0.9) / 0.1;
+    ambientIntensity = 0.08 + t * 0.4;
+    sunIntensity = 0.05 + t * 0.65;
+    fogDensity = 0.02 - t * 0.014;
+    skyColor = new THREE.Color(0x050510).lerp(new THREE.Color(0x87CEEB), t);
+    fogColor = new THREE.Color(0x050510).lerp(new THREE.Color(0x87CEEB), t);
+  }
+  
+  ambientLight.intensity = ambientIntensity;
+  sunLight.intensity = sunIntensity;
+  scene.background = skyColor;
+  scene.fog.color = fogColor;
+  scene.fog.density = fogDensity;
+  
+  // Sun position
+  const sunAngle = dayProgress * Math.PI * 2 - Math.PI / 2;
+  sunLight.position.set(Math.cos(sunAngle) * 100, Math.sin(sunAngle) * 150, 50);
+  
+  // Fear overlay
+  document.getElementById('fear-overlay').style.opacity = state.fearLevel;
+  
+  // Vignette intensifies at night
+  if (state.isNight) {
+    const intensity = 0.5 + state.fearLevel * 0.3;
+    document.getElementById('vignette').style.background = `radial-gradient(ellipse at center, transparent ${30 - state.fearLevel * 20}%, rgba(0,0,0,${intensity}) 100%)`;
+  } else {
+    document.getElementById('vignette').style.background = 'radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.3) 100%)';
+  }
+  
+  updateTimeDisplay();
+}
+
+// ==================== COLLISION ====================
+const PLAYER_RADIUS = 0.4;
+
+function getBlockAABB(block) {
+  const p = block.position;
+  const rot = block.mesh.rotation.y;
+  // Determine half-extents based on type
+  let hx, hy, hz;
+  if (block.type === 'wall') {
+    hx = 1.0; hy = 1.5; hz = 0.15;
+  } else {
+    // floor
+    hx = 1.0; hy = 0.1; hz = 1.0;
+  }
+  // Swap x/z extents if rotated ~90 or ~270 degrees
+  const normalizedRot = ((rot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  const isRotated = (normalizedRot > Math.PI * 0.25 && normalizedRot < Math.PI * 0.75) ||
+                    (normalizedRot > Math.PI * 1.25 && normalizedRot < Math.PI * 1.75);
+  if (isRotated) { const tmp = hx; hx = hz; hz = tmp; }
+  
+  return {
+    minX: p.x - hx, maxX: p.x + hx,
+    minY: p.y - hy, maxY: p.y + hy,
+    minZ: p.z - hz, maxZ: p.z + hz
+  };
+}
+
+function circleAABBOverlap(cx, cz, radius, minX, maxX, minZ, maxZ) {
+  // Find closest point on AABB to circle center
+  const closestX = Math.max(minX, Math.min(cx, maxX));
+  const closestZ = Math.max(minZ, Math.min(cz, maxZ));
+  const dx = cx - closestX;
+  const dz = cz - closestZ;
+  return (dx * dx + dz * dz) < (radius * radius);
+}
+
+function checkCollision(pos) {
+  const playerFeetY = pos.y - PLAYER_HEIGHT;
+  const playerHeadY = pos.y;
+  
+  // Check against built blocks
+  for (const block of state.builtBlocks) {
+    const aabb = getBlockAABB(block);
+    // Check vertical overlap first
+    if (playerHeadY <= aabb.minY || playerFeetY >= aabb.maxY) continue;
+    // Check horizontal circle-vs-AABB overlap
+    if (circleAABBOverlap(pos.x, pos.z, PLAYER_RADIUS, aabb.minX, aabb.maxX, aabb.minZ, aabb.maxZ)) {
+      return true;
+    }
+  }
+  
+  // Check against tree trunks
+  for (const tree of state.trees) {
+    const dx = pos.x - tree.group.position.x;
+    const dz = pos.z - tree.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < 0.5 + PLAYER_RADIUS) return true;
+  }
+  
+  return false;
+}
+
+// ==================== MAIN PLAYER UPDATE ====================
+function updatePlayer(dt) {
+  const speed = keys['ShiftLeft'] ? 9 : 5;
+  
+  const forward = new THREE.Vector3(0, 0, -1);
+  forward.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  const right = new THREE.Vector3(1, 0, 0);
+  right.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+  
+  velocity.set(0, 0, 0);
+  if (keys['KeyW']) velocity.add(forward);
+  if (keys['KeyS']) velocity.sub(forward);
+  if (keys['KeyD']) velocity.add(right);
+  if (keys['KeyA']) velocity.sub(right);
+  
+  if (velocity.length() > 0) velocity.normalize().multiplyScalar(speed * dt);
+  
+  // Horizontal movement with collision
+  const newPos = camera.position.clone();
+  newPos.x += velocity.x;
+  newPos.z += velocity.z;
+  
+  if (!checkCollision(newPos)) {
+    camera.position.x = newPos.x;
+    camera.position.z = newPos.z;
+  } else {
+    // Try sliding along each axis independently
+    const slideX = camera.position.clone();
+    slideX.x += velocity.x;
+    if (!checkCollision(slideX)) camera.position.x = slideX.x;
+    
+    const slideZ = camera.position.clone();
+    slideZ.z += velocity.z;
+    if (!checkCollision(slideZ)) camera.position.z = slideZ.z;
+  }
+  
+  // Push-out: if somehow inside a block, push the player out
+  if (checkCollision(camera.position)) {
+    let bestPush = null;
+    let bestDist = Infinity;
+    const playerFeetY = camera.position.y - PLAYER_HEIGHT;
+    const playerHeadY = camera.position.y;
+    
+    for (const block of state.builtBlocks) {
+      const aabb = getBlockAABB(block);
+      if (playerHeadY <= aabb.minY || playerFeetY >= aabb.maxY) continue;
+      if (!circleAABBOverlap(camera.position.x, camera.position.z, PLAYER_RADIUS, aabb.minX, aabb.maxX, aabb.minZ, aabb.maxZ)) continue;
+      
+      // Calculate push direction: find nearest edge to push player to
+      const pushes = [
+        { x: aabb.minX - PLAYER_RADIUS - 0.01, z: camera.position.z }, // push left
+        { x: aabb.maxX + PLAYER_RADIUS + 0.01, z: camera.position.z }, // push right
+        { x: camera.position.x, z: aabb.minZ - PLAYER_RADIUS - 0.01 }, // push back
+        { x: camera.position.x, z: aabb.maxZ + PLAYER_RADIUS + 0.01 }, // push front
+      ];
+      for (const p of pushes) {
+        const d = Math.sqrt((p.x - camera.position.x) ** 2 + (p.z - camera.position.z) ** 2);
+        if (d < bestDist) { bestDist = d; bestPush = p; }
+      }
+    }
+    if (bestPush) {
+      camera.position.x = bestPush.x;
+      camera.position.z = bestPush.z;
+    }
+  }
+  
+  // Vertical - gravity and jumping
+  const terrainY = getTerrainHeight(camera.position.x, camera.position.z);
+  const targetY = terrainY + PLAYER_HEIGHT;
+  
+  if (keys['Space'] && onGround) {
+    verticalVelocity = JUMP_FORCE;
+    onGround = false;
+  }
+  
+  verticalVelocity += GRAVITY * dt;
+  playerY += verticalVelocity * dt;
+  
+  if (playerY <= targetY) {
+    playerY = targetY;
+    verticalVelocity = 0;
+    onGround = true;
+  }
+  
+  camera.position.y = playerY;
+  
+  // Head bob when walking
+  if (velocity.length() > 0.01 && onGround) {
+    const bobSpeed = keys['ShiftLeft'] ? 12 : 8;
+    const bobAmount = keys['ShiftLeft'] ? 0.06 : 0.04;
+    camera.position.y += Math.sin(state.gameTime * bobSpeed) * bobAmount;
+  }
+  
+  // Update terrain chunks around player
+  updateChunks(camera.position.x, camera.position.z);
+  
+  // Update shadow camera to follow player
+  sunLight.target.position.copy(camera.position);
+  sunLight.target.updateMatrixWorld();
+}
+
+// ==================== GAME LOOP ====================
+let lastTime = 0;
+
+function gameLoop(time) {
+  requestAnimationFrame(gameLoop);
+  
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  
+  if (!state.playing || state.dead) {
+    renderer.render(scene, camera);
+    return;
+  }
+  
+  updatePlayer(dt);
+  updateDayNight(dt);
+  updateAnimals(dt);
+  updateCreatures(dt);
+  updateHUD();
+  
+  // Camera shake during fear
+  if (state.fearLevel > 0.3) {
+    camera.position.x += (Math.random() - 0.5) * state.fearLevel * 0.03;
+    camera.position.y += (Math.random() - 0.5) * state.fearLevel * 0.02;
+  }
+  
+  renderer.render(scene, camera);
+}
+
+// ==================== INIT ====================
+// Spawn player
+const spawnX = 0, spawnZ = 0;
+playerY = getTerrainHeight(spawnX, spawnZ) + PLAYER_HEIGHT;
+camera.position.set(spawnX, playerY, spawnZ);
+
+// Initial chunks
+updateChunks(spawnX, spawnZ);
+
+// Initial animals
+for (let i = 0; i < 8; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 15 + Math.random() * 40;
+  const types = ['pig', 'sheep', 'cow'];
+  createAnimal(types[Math.floor(Math.random() * 3)], spawnX + Math.cos(angle) * dist, spawnZ + Math.sin(angle) * dist);
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Start
+requestAnimationFrame(gameLoop);
+
+showMessage("Gather wood. Build shelter. Survive the night.", 5000);
+</script>
+</body>
+</html>

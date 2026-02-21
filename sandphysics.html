@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Falling Sand Simulation</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+        }
+        .material-btn {
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .material-btn.active {
+            transform: scale(1.1);
+            box-shadow: 0 0 20px currentColor;
+        }
+        #canvas {
+            image-rendering: pixelated;
+            cursor: crosshair;
+            display: block;
+            touch-action: none;
+        }
+        .glow {
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+        }
+        .energy-bar {
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold text-center text-white mb-4">🏜️ Falling Sand Simulation</h1>
+        
+        <div class="flex flex-wrap gap-4 justify-center">
+            <!-- Canvas Container -->
+            <div class="bg-gray-800 p-3 rounded-xl glow">
+                <canvas id="canvas" width="800" height="600" class="rounded-lg bg-black"></canvas>
+            </div>
+            
+            <!-- Controls Panel -->
+            <div class="bg-gray-800 p-4 rounded-xl w-72 space-y-4 max-h-[620px] overflow-y-auto">
+                <!-- Energy Display -->
+                <div class="bg-gray-900 p-3 rounded-lg">
+                    <h3 class="text-yellow-400 font-semibold mb-2 flex items-center gap-2">
+                        <span>⚡ Energy</span>
+                        <span id="energyValue" class="text-white">0</span>
+                        <span class="text-gray-500">/ 1000</span>
+                    </h3>
+                    <div class="w-full h-4 bg-gray-700 rounded-full overflow-hidden">
+                        <div id="energyBar" class="energy-bar h-full rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <!-- Materials -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">Materials</h3>
+                    <div class="grid grid-cols-3 gap-2" id="materials">
+                        <button class="material-btn active w-full h-10 rounded-lg bg-yellow-500 text-xs font-bold text-yellow-900" data-material="sand">Sand</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-blue-500 text-xs font-bold text-blue-900" data-material="water">Water</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-amber-700 text-xs font-bold text-amber-200" data-material="oil">Oil</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-orange-500 text-xs font-bold text-orange-900" data-material="fire">Fire</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-gray-400 text-xs font-bold text-gray-700" data-material="smoke">Smoke</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-white text-xs font-bold text-gray-500" data-material="steam">Steam</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-gray-600 text-xs font-bold text-gray-200" data-material="stone">Stone</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-green-700 text-xs font-bold text-green-200" data-material="wood">Wood</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-cyan-400 text-xs font-bold text-cyan-900" data-material="ice">Ice</button>
+                    </div>
+                </div>
+                
+                <!-- New Materials -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">🆕 More Materials</h3>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="material-btn w-full h-10 rounded-lg bg-orange-600 text-xs font-bold text-orange-100" data-material="lava">Lava</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-lime-400 text-xs font-bold text-lime-900" data-material="acid">Acid</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-green-500 text-xs font-bold text-green-900" data-material="plant">Plant</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-gray-800 text-xs font-bold text-gray-300 border border-gray-600" data-material="gunpowder">Powder</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-gray-100 text-xs font-bold text-gray-600" data-material="salt">Salt</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-sky-200 text-xs font-bold text-sky-700" data-material="glass">Glass</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-amber-800 text-xs font-bold text-amber-200" data-material="mud">Mud</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-slate-100 text-xs font-bold text-slate-400" data-material="snow">Snow</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-slate-400 text-xs font-bold text-slate-800" data-material="metal">Metal</button>
+                    </div>
+                </div>
+                
+                <!-- Machines -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">⚙️ Machines</h3>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button class="material-btn w-full h-10 rounded-lg bg-emerald-600 text-xs font-bold text-white" data-material="turbine">Turbine</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-red-600 text-xs font-bold text-white" data-material="heater">Heater</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-sky-600 text-xs font-bold text-white" data-material="fan">Fan</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-indigo-600 text-xs font-bold text-white" data-material="spawner">Spawner</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-pink-600 text-xs font-bold text-white" data-material="cloner">Cloner</button>
+                        <button class="material-btn w-full h-10 rounded-lg bg-violet-600 text-xs font-bold text-white" data-material="void">Void</button>
+                    </div>
+                </div>
+                
+                <!-- Tools -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">Tools</h3>
+                    <div class="flex gap-2">
+                        <button id="eraseTool" class="flex-1 h-10 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition">Erase</button>
+                        <button id="fillTool" class="flex-1 h-10 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition">Fill</button>
+                    </div>
+                </div>
+                
+                <!-- Brush Size -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">Brush Size: <span id="brushSizeLabel">3</span></h3>
+                    <input type="range" id="brushSize" min="1" max="20" value="3" class="w-full accent-blue-500">
+                </div>
+                
+                <!-- Simulation Speed -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">Speed: <span id="speedLabel">1x</span></h3>
+                    <input type="range" id="speed" min="1" max="5" value="1" class="w-full accent-green-500">
+                </div>
+                
+                <!-- Actions -->
+                <div>
+                    <h3 class="text-white font-semibold mb-2">Actions</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="clearBtn" class="h-10 rounded-lg bg-red-700 hover:bg-red-600 text-white text-xs font-bold transition">Clear</button>
+                        <button id="pauseBtn" class="h-10 rounded-lg bg-yellow-600 hover:bg-yellow-500 text-white text-xs font-bold transition">Pause</button>
+                        <button id="saveBtn" class="h-10 rounded-lg bg-green-700 hover:bg-green-600 text-white text-xs font-bold transition">Save</button>
+                        <button id="loadBtn" class="h-10 rounded-lg bg-blue-700 hover:bg-blue-600 text-white text-xs font-bold transition">Load</button>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="text-gray-400 text-xs">
+                    <p>Particles: <span id="particleCount">0</span></p>
+                    <p>FPS: <span id="fps">0</span></p>
+                </div>
+                
+                <!-- Instructions -->
+                <div class="text-gray-500 text-xs">
+                    <p class="font-semibold text-gray-400 mb-1">Interactions:</p>
+                    <p>• Fire + Water = Steam</p>
+                    <p>• Fire + Oil = More Fire</p>
+                    <p>• Lava + Water = Stone + Steam</p>
+                    <p>• Acid dissolves materials</p>
+                    <p>• Plant grows near water</p>
+                    <p>• Gunpowder + Fire = Explosion</p>
+                    <p>• Salt dissolves in water</p>
+                    <p>• Sand + Fire/Lava = Glass</p>
+                    <p>• Metal conducts heat</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <input type="file" id="fileInput" accept=".sand" class="hidden">
+    
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Grid settings
+        const CELL_SIZE = 4;
+        const WIDTH = 200;
+        const HEIGHT = 150;
+        
+        // Materials
+        const EMPTY = 0;
+        const SAND = 1;
+        const WATER = 2;
+        const OIL = 3;
+        const FIRE = 4;
+        const SMOKE = 5;
+        const STEAM = 6;
+        const STONE = 7;
+        const WOOD = 8;
+        const ICE = 9;
+        const TURBINE = 10;
+        const HEATER = 11;
+        const FAN = 12;
+        const SPAWNER = 13;
+        const CLONER = 14;
+        const VOID = 15;
+        // New materials
+        const LAVA = 16;
+        const ACID = 17;
+        const PLANT = 18;
+        const GUNPOWDER = 19;
+        const SALT = 20;
+        const GLASS = 21;
+        const MUD = 22;
+        const SNOW = 23;
+        const METAL = 24;
+        
+        const MATERIAL_MAP = {
+            'sand': SAND,
+            'water': WATER,
+            'oil': OIL,
+            'fire': FIRE,
+            'smoke': SMOKE,
+            'steam': STEAM,
+            'stone': STONE,
+            'wood': WOOD,
+            'ice': ICE,
+            'turbine': TURBINE,
+            'heater': HEATER,
+            'fan': FAN,
+            'spawner': SPAWNER,
+            'cloner': CLONER,
+            'void': VOID,
+            'lava': LAVA,
+            'acid': ACID,
+            'plant': PLANT,
+            'gunpowder': GUNPOWDER,
+            'salt': SALT,
+            'glass': GLASS,
+            'mud': MUD,
+            'snow': SNOW,
+            'metal': METAL
+        };
+        
+        // Colors
+        const COLORS = {
+            [SAND]: ['#e6b800', '#d4a800', '#c99700', '#f0c800'],
+            [WATER]: ['#3498db', '#2980b9', '#5faee3', '#4aa3e0'],
+            [OIL]: ['#5c4033', '#4a3728', '#6b4c3a', '#3d2817'],
+            [FIRE]: ['#ff4500', '#ff6600', '#ff8c00', '#ffcc00'],
+            [SMOKE]: ['#555555', '#666666', '#777777', '#888888'],
+            [STEAM]: ['#e8e8e8', '#f0f0f0', '#d8d8d8', '#ffffff'],
+            [STONE]: ['#555555', '#666666', '#4a4a4a', '#5a5a5a'],
+            [WOOD]: ['#654321', '#5a3d1e', '#704b29', '#4a3015'],
+            [ICE]: ['#a5f2f3', '#87ceeb', '#b0e0e6', '#add8e6'],
+            [TURBINE]: ['#10b981', '#059669', '#34d399', '#6ee7b7'],
+            [HEATER]: ['#dc2626', '#b91c1c', '#ef4444', '#f87171'],
+            [FAN]: ['#0ea5e9', '#0284c7', '#38bdf8', '#7dd3fc'],
+            [SPAWNER]: ['#6366f1', '#4f46e5', '#818cf8', '#a5b4fc'],
+            [CLONER]: ['#ec4899', '#db2777', '#f472b6', '#f9a8d4'],
+            [VOID]: ['#7c3aed', '#6d28d9', '#8b5cf6', '#a78bfa'],
+            [LAVA]: ['#ff4500', '#cc3700', '#ff6a00', '#ff8c00'],
+            [ACID]: ['#aaff00', '#88dd00', '#ccff33', '#99ee00'],
+            [PLANT]: ['#228b22', '#2e8b57', '#32cd32', '#3cb371'],
+            [GUNPOWDER]: ['#2d2d2d', '#3d3d3d', '#1d1d1d', '#4d4d4d'],
+            [SALT]: ['#ffffff', '#f5f5f5', '#eeeeee', '#fafafa'],
+            [GLASS]: ['#87ceeb', '#add8e6', '#b0e0e6', '#afeeee'],
+            [MUD]: ['#8b4513', '#a0522d', '#6b3e0a', '#7b4513'],
+            [SNOW]: ['#fffafa', '#f0f8ff', '#f5fffa', '#ffffff'],
+            [METAL]: ['#71797e', '#848884', '#a9a9a9', '#8a9a9a']
+        };
+        
+        // Grid state
+        let grid = [];
+        let colorVar = [];
+        let updated = [];
+        let heat = []; // Heat map for metal conduction
+        
+        // Energy
+        let energy = 0;
+        const MAX_ENERGY = 1000;
+        
+        // Initialize grid
+        function initGrid() {
+            grid = [];
+            colorVar = [];
+            heat = [];
+            energy = 0;
+            for (let y = 0; y < HEIGHT; y++) {
+                grid[y] = new Array(WIDTH).fill(EMPTY);
+                colorVar[y] = new Array(WIDTH).fill(0);
+                heat[y] = new Array(WIDTH).fill(0);
+            }
+        }
+        
+        // State
+        let currentMaterial = 'sand';
+        let brushSize = 3;
+        let isErasing = false;
+        let isFilling = false;
+        let isPaused = false;
+        let isDrawing = false;
+        let lastX = -1;
+        let lastY = -1;
+        let simulationSpeed = 1;
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+        let fps = 0;
+        
+        // UI Elements
+        const brushSizeSlider = document.getElementById('brushSize');
+        const brushSizeLabel = document.getElementById('brushSizeLabel');
+        const speedSlider = document.getElementById('speed');
+        const speedLabel = document.getElementById('speedLabel');
+        const particleCountEl = document.getElementById('particleCount');
+        const fpsEl = document.getElementById('fps');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const energyValueEl = document.getElementById('energyValue');
+        const energyBarEl = document.getElementById('energyBar');
+        
+        function updateEnergyDisplay() {
+            if (energyValueEl && energyBarEl) {
+                energyValueEl.textContent = Math.floor(energy);
+                energyBarEl.style.width = (energy / MAX_ENERGY * 100) + '%';
+            }
+        }
+        
+        // Initialize grid and update energy display
+        initGrid();
+        updateEnergyDisplay();
+        
+        // Material buttons
+        document.querySelectorAll('.material-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.material-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentMaterial = this.dataset.material;
+                isErasing = false;
+                isFilling = false;
+                document.getElementById('eraseTool').classList.remove('ring-2', 'ring-white');
+                document.getElementById('fillTool').classList.remove('ring-2', 'ring-white');
+            });
+        });
+        
+        // Tool buttons
+        document.getElementById('eraseTool').addEventListener('click', function() {
+            isErasing = !isErasing;
+            isFilling = false;
+            this.classList.toggle('ring-2');
+            this.classList.toggle('ring-white');
+            document.getElementById('fillTool').classList.remove('ring-2', 'ring-white');
+        });
+        
+        document.getElementById('fillTool').addEventListener('click', function() {
+            isFilling = !isFilling;
+            isErasing = false;
+            this.classList.toggle('ring-2');
+            this.classList.toggle('ring-white');
+            document.getElementById('eraseTool').classList.remove('ring-2', 'ring-white');
+        });
+        
+        // Sliders
+        brushSizeSlider.addEventListener('input', function() {
+            brushSize = parseInt(this.value);
+            brushSizeLabel.textContent = brushSize;
+        });
+        
+        speedSlider.addEventListener('input', function() {
+            simulationSpeed = parseInt(this.value);
+            speedLabel.textContent = simulationSpeed + 'x';
+        });
+        
+        // Action buttons
+        document.getElementById('clearBtn').addEventListener('click', initGrid);
+        
+        document.getElementById('pauseBtn').addEventListener('click', function() {
+            isPaused = !isPaused;
+            this.textContent = isPaused ? 'Play' : 'Pause';
+        });
+        
+        document.getElementById('saveBtn').addEventListener('click', saveSimulation);
+        document.getElementById('loadBtn').addEventListener('click', function() {
+            document.getElementById('fileInput').click();
+        });
+        document.getElementById('fileInput').addEventListener('change', loadSimulation);
+        
+        // Get grid position from event
+        function getGridPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / rect.width * WIDTH);
+            const y = Math.floor((e.clientY - rect.top) / rect.height * HEIGHT);
+            return { x: Math.max(0, Math.min(WIDTH - 1, x)), y: Math.max(0, Math.min(HEIGHT - 1, y)) };
+        }
+        
+        // Get grid position from touch event
+        function getTouchPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const x = Math.floor((touch.clientX - rect.left) / rect.width * WIDTH);
+            const y = Math.floor((touch.clientY - rect.top) / rect.height * HEIGHT);
+            return { x: Math.max(0, Math.min(WIDTH - 1, x)), y: Math.max(0, Math.min(HEIGHT - 1, y)) };
+        }
+        
+        // Draw at position
+        function drawAt(gx, gy) {
+            const material = isErasing ? EMPTY : MATERIAL_MAP[currentMaterial];
+            
+            for (let dy = -brushSize; dy <= brushSize; dy++) {
+                for (let dx = -brushSize; dx <= brushSize; dx++) {
+                    if (dx * dx + dy * dy <= brushSize * brushSize) {
+                        const nx = gx + dx;
+                        const ny = gy + dy;
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            if (isErasing || grid[ny][nx] === EMPTY) {
+                                grid[ny][nx] = material;
+                                colorVar[ny][nx] = Math.floor(Math.random() * 4);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Draw line between two points
+        function drawLine(x0, y0, x1, y1) {
+            const dx = Math.abs(x1 - x0);
+            const dy = Math.abs(y1 - y0);
+            const sx = x0 < x1 ? 1 : -1;
+            const sy = y0 < y1 ? 1 : -1;
+            let err = dx - dy;
+            
+            while (true) {
+                drawAt(x0, y0);
+                
+                if (x0 === x1 && y0 === y1) break;
+                const e2 = 2 * err;
+                if (e2 > -dy) { err -= dy; x0 += sx; }
+                if (e2 < dx) { err += dx; y0 += sy; }
+            }
+        }
+        
+        // Mouse events
+        canvas.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            isDrawing = true;
+            const pos = getGridPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+            
+            if (isFilling) {
+                floodFill(pos.x, pos.y);
+            } else {
+                drawAt(pos.x, pos.y);
+            }
+        });
+        
+        canvas.addEventListener('mousemove', function(e) {
+            if (!isDrawing || isFilling) return;
+            e.preventDefault();
+            const pos = getGridPos(e);
+            
+            if (lastX >= 0 && lastY >= 0) {
+                drawLine(lastX, lastY, pos.x, pos.y);
+            } else {
+                drawAt(pos.x, pos.y);
+            }
+            
+            lastX = pos.x;
+            lastY = pos.y;
+        });
+        
+        canvas.addEventListener('mouseup', function() {
+            isDrawing = false;
+            lastX = -1;
+            lastY = -1;
+        });
+        
+        canvas.addEventListener('mouseleave', function() {
+            isDrawing = false;
+            lastX = -1;
+            lastY = -1;
+        });
+        
+        // Touch events
+        canvas.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            isDrawing = true;
+            const pos = getTouchPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+            
+            if (isFilling) {
+                floodFill(pos.x, pos.y);
+            } else {
+                drawAt(pos.x, pos.y);
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', function(e) {
+            if (!isDrawing || isFilling) return;
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            
+            if (lastX >= 0 && lastY >= 0) {
+                drawLine(lastX, lastY, pos.x, pos.y);
+            } else {
+                drawAt(pos.x, pos.y);
+            }
+            
+            lastX = pos.x;
+            lastY = pos.y;
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', function() {
+            isDrawing = false;
+            lastX = -1;
+            lastY = -1;
+        });
+        
+        // Flood fill
+        function floodFill(startX, startY) {
+            if (startX < 0 || startX >= WIDTH || startY < 0 || startY >= HEIGHT) return;
+            
+            const targetMaterial = grid[startY][startX];
+            const fillMaterial = MATERIAL_MAP[currentMaterial];
+            
+            if (targetMaterial === fillMaterial) return;
+            
+            const stack = [[startX, startY]];
+            const visited = new Set();
+            
+            while (stack.length > 0 && visited.size < 50000) {
+                const [x, y] = stack.pop();
+                const key = x + ',' + y;
+                
+                if (visited.has(key)) continue;
+                if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) continue;
+                if (grid[y][x] !== targetMaterial) continue;
+                
+                visited.add(key);
+                grid[y][x] = fillMaterial;
+                colorVar[y][x] = Math.floor(Math.random() * 4);
+                
+                stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+            }
+        }
+        
+        // Helper functions
+        function isMachine(m) {
+            return m >= TURBINE && m <= VOID;
+        }
+        
+        function isSolid(m) {
+            return m === STONE || m === WOOD || m === ICE || m === GLASS || m === METAL || isMachine(m);
+        }
+        
+        function isLiquid(m) {
+            return m === WATER || m === OIL || m === LAVA || m === ACID || m === MUD;
+        }
+        
+        function isEmpty(x, y) {
+            return x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT && grid[y][x] === EMPTY;
+        }
+        
+        function getCell(x, y) {
+            if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+                return grid[y][x];
+            }
+            return -1;
+        }
+        
+        function swap(x1, y1, x2, y2) {
+            const temp = grid[y1][x1];
+            const tempC = colorVar[y1][x1];
+            grid[y1][x1] = grid[y2][x2];
+            colorVar[y1][x1] = colorVar[y2][x2];
+            grid[y2][x2] = temp;
+            colorVar[y2][x2] = tempC;
+            updated[y2][x2] = true;
+        }
+        
+        function setCell(x, y, m) {
+            if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
+                grid[y][x] = m;
+                colorVar[y][x] = Math.floor(Math.random() * 4);
+                updated[y][x] = true;
+            }
+        }
+        
+        // Explosion helper
+        function explode(cx, cy, radius) {
+            for (let dy = -radius; dy <= radius; dy++) {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    if (dx * dx + dy * dy <= radius * radius) {
+                        const nx = cx + dx;
+                        const ny = cy + dy;
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            const m = grid[ny][nx];
+                            if (!isMachine(m)) {
+                                if (Math.random() < 0.7) {
+                                    if (m !== EMPTY && m !== STONE && m !== METAL && m !== GLASS) {
+                                        setCell(nx, ny, Math.random() < 0.3 ? FIRE : (Math.random() < 0.5 ? SMOKE : EMPTY));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Simulation
+        function simulate() {
+            if (isPaused) return;
+            
+            // Reset update tracking
+            updated = [];
+            for (let y = 0; y < HEIGHT; y++) {
+                updated[y] = new Array(WIDTH).fill(false);
+            }
+            
+            // Process machines first
+            for (let y = 0; y < HEIGHT; y++) {
+                for (let x = 0; x < WIDTH; x++) {
+                    const m = grid[y][x];
+                    if (m === TURBINE) updateTurbine(x, y);
+                    else if (m === HEATER) updateHeater(x, y);
+                    else if (m === FAN) updateFan(x, y);
+                    else if (m === SPAWNER) updateSpawner(x, y);
+                    else if (m === CLONER) updateCloner(x, y);
+                    else if (m === VOID) updateVoid(x, y);
+                }
+            }
+            
+            // Process particles (bottom to top)
+            for (let y = HEIGHT - 1; y >= 0; y--) {
+                const leftToRight = Math.random() < 0.5;
+                for (let i = 0; i < WIDTH; i++) {
+                    const x = leftToRight ? i : WIDTH - 1 - i;
+                    if (updated[y][x]) continue;
+                    
+                    const m = grid[y][x];
+                    if (m === EMPTY || isMachine(m)) continue;
+                    
+                    if (m === SAND) updateSand(x, y);
+                    else if (m === WATER) updateWater(x, y);
+                    else if (m === OIL) updateOil(x, y);
+                    else if (m === FIRE) updateFire(x, y);
+                    else if (m === SMOKE) updateSmoke(x, y);
+                    else if (m === STEAM) updateSteam(x, y);
+                    else if (m === ICE) updateIce(x, y);
+                    else if (m === LAVA) updateLava(x, y);
+                    else if (m === ACID) updateAcid(x, y);
+                    else if (m === PLANT) updatePlant(x, y);
+                    else if (m === GUNPOWDER) updateGunpowder(x, y);
+                    else if (m === SALT) updateSalt(x, y);
+                    else if (m === MUD) updateMud(x, y);
+                    else if (m === SNOW) updateSnow(x, y);
+                    else if (m === METAL) updateMetal(x, y);
+                }
+            }
+            
+            energy = Math.min(MAX_ENERGY, Math.max(0, energy));
+            updateEnergyDisplay();
+        }
+        
+        // Machine update functions
+        function updateTurbine(x, y) {
+            if (y > 0) {
+                const above = grid[y - 1][x];
+                if (above === SAND || above === WATER || above === OIL || above === LAVA || above === MUD) {
+                    if (y + 1 < HEIGHT && isEmpty(x, y + 1)) {
+                        energy += above === WATER ? 1 : (above === LAVA ? 2 : 0.5);
+                        setCell(x, y + 1, above);
+                        setCell(x, y - 1, EMPTY);
+                    }
+                }
+            }
+        }
+        
+        function updateHeater(x, y) {
+            if (energy < 1) return;
+            if (y > 0 && isEmpty(x, y - 1) && Math.random() < 0.2) {
+                energy -= 1;
+                setCell(x, y - 1, FIRE);
+            }
+        }
+        
+        function updateFan(x, y) {
+            if (energy < 1) return;
+            for (let cy = y - 1; cy >= Math.max(0, y - 8); cy--) {
+                const m = grid[cy][x];
+                if (m !== EMPTY && !isSolid(m)) {
+                    if (cy > 0 && isEmpty(x, cy - 1)) {
+                        energy -= 0.3;
+                        swap(x, cy, x, cy - 1);
+                    }
+                }
+            }
+        }
+        
+        function updateSpawner(x, y) {
+            if (energy < 2) return;
+            if (y + 1 < HEIGHT && isEmpty(x, y + 1) && Math.random() < 0.15) {
+                energy -= 2;
+                setCell(x, y + 1, WATER);
+            }
+        }
+        
+        function updateCloner(x, y) {
+            let source = null;
+            let emptyX = -1, emptyY = -1;
+            
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const m = grid[ny][nx];
+                        if (m === EMPTY) { emptyX = nx; emptyY = ny; }
+                        else if (!isMachine(m) && !isSolid(m)) source = m;
+                    }
+                }
+            }
+            
+            if (source !== null && emptyX >= 0 && Math.random() < 0.08) {
+                setCell(emptyX, emptyY, source);
+            }
+        }
+        
+        function updateVoid(x, y) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] !== EMPTY && !isMachine(grid[ny][nx])) {
+                            setCell(nx, ny, EMPTY);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Material update functions
+        function updateSand(x, y) {
+            // Check for nearby fire/lava to become glass
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    const neighbor = getCell(nx, ny);
+                    if ((neighbor === FIRE || neighbor === LAVA) && Math.random() < 0.01) {
+                        setCell(x, y, GLASS);
+                        return;
+                    }
+                }
+            }
+            
+            if (y + 1 >= HEIGHT) return;
+            
+            const below = grid[y + 1][x];
+            if (below === EMPTY || below === WATER || below === OIL || below === ACID) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            for (const d of [dir, -dir]) {
+                const nx = x + d;
+                if (nx >= 0 && nx < WIDTH) {
+                    const diag = grid[y + 1][nx];
+                    if (diag === EMPTY || diag === WATER || diag === OIL || diag === ACID) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function updateWater(x, y) {
+            // Check fire nearby
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] === FIRE) {
+                            setCell(x, y, STEAM);
+                            setCell(nx, ny, EMPTY);
+                            return;
+                        }
+                        if (grid[ny][nx] === LAVA) {
+                            setCell(x, y, STEAM);
+                            setCell(nx, ny, STONE);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            if (y + 1 < HEIGHT) {
+                const below = grid[y + 1][x];
+                if (below === EMPTY || below === OIL) {
+                    swap(x, y, x, y + 1);
+                    return;
+                }
+                
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                for (const d of [dir, -dir]) {
+                    const nx = x + d;
+                    if (nx >= 0 && nx < WIDTH && (grid[y + 1][nx] === EMPTY || grid[y + 1][nx] === OIL)) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            for (const d of [dir, -dir]) {
+                const nx = x + d;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                    return;
+                }
+            }
+        }
+        
+        function updateOil(x, y) {
+            // Check fire nearby
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] === FIRE || grid[ny][nx] === LAVA) {
+                            setCell(x, y, FIRE);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            if (y + 1 < HEIGHT && grid[y + 1][x] === EMPTY) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            if (y + 1 < HEIGHT) {
+                for (const d of [dir, -dir]) {
+                    const nx = x + d;
+                    if (nx >= 0 && nx < WIDTH && grid[y + 1][nx] === EMPTY) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+            
+            if (Math.random() < 0.3) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                }
+            }
+        }
+        
+        function updateFire(x, y) {
+            if (Math.random() < 0.02) {
+                setCell(x, y, SMOKE);
+                return;
+            }
+            
+            // Spread and interact
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const neighbor = grid[ny][nx];
+                        if (neighbor === WOOD && Math.random() < 0.05) {
+                            setCell(nx, ny, FIRE);
+                        }
+                        if (neighbor === ICE || neighbor === SNOW) {
+                            setCell(nx, ny, WATER);
+                        }
+                        if (neighbor === PLANT && Math.random() < 0.1) {
+                            setCell(nx, ny, FIRE);
+                        }
+                    }
+                }
+            }
+            
+            if (y > 0 && grid[y - 1][x] === EMPTY && Math.random() < 0.2) {
+                setCell(x, y - 1, SMOKE);
+            }
+            
+            if (Math.random() < 0.3 && y > 0 && grid[y - 1][x] === EMPTY) {
+                swap(x, y, x, y - 1);
+            }
+        }
+        
+        function updateSmoke(x, y) {
+            if (Math.random() < 0.005) {
+                setCell(x, y, EMPTY);
+                return;
+            }
+            
+            if (y > 0 && grid[y - 1][x] === EMPTY) {
+                swap(x, y, x, y - 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            if (y > 0) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y - 1][nx] === EMPTY) {
+                    swap(x, y, nx, y - 1);
+                    return;
+                }
+            }
+            
+            if (Math.random() < 0.2) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                }
+            }
+        }
+        
+        function updateSteam(x, y) {
+            if (Math.random() < 0.003) {
+                setCell(x, y, WATER);
+                return;
+            }
+            
+            if (y > 0 && grid[y - 1][x] === EMPTY) {
+                swap(x, y, x, y - 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            if (y > 0) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y - 1][nx] === EMPTY) {
+                    swap(x, y, nx, y - 1);
+                    return;
+                }
+            }
+            
+            if (Math.random() < 0.4) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                }
+            }
+            
+            if (y === 0 && Math.random() < 0.1) {
+                setCell(x, y, EMPTY);
+            }
+        }
+        
+        function updateIce(x, y) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (Math.random() < 0.001 && grid[ny][nx] === WATER) {
+                            setCell(nx, ny, ICE);
+                        }
+                        if ((grid[ny][nx] === FIRE || grid[ny][nx] === LAVA) && Math.random() < 0.1) {
+                            setCell(x, y, WATER);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // New material update functions
+        function updateLava(x, y) {
+            // Interactions
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const neighbor = grid[ny][nx];
+                        if (neighbor === WATER) {
+                            setCell(x, y, STONE);
+                            setCell(nx, ny, STEAM);
+                            return;
+                        }
+                        if (neighbor === ICE || neighbor === SNOW) {
+                            setCell(nx, ny, WATER);
+                        }
+                        if (neighbor === WOOD && Math.random() < 0.1) {
+                            setCell(nx, ny, FIRE);
+                        }
+                        if (neighbor === OIL) {
+                            setCell(nx, ny, FIRE);
+                        }
+                        if (neighbor === PLANT && Math.random() < 0.2) {
+                            setCell(nx, ny, FIRE);
+                        }
+                    }
+                }
+            }
+            
+            // Emit light/fire occasionally
+            if (y > 0 && grid[y - 1][x] === EMPTY && Math.random() < 0.02) {
+                setCell(x, y - 1, FIRE);
+            }
+            
+            // Flow like slow liquid
+            if (y + 1 < HEIGHT) {
+                const below = grid[y + 1][x];
+                if (below === EMPTY || below === WATER || below === OIL) {
+                    swap(x, y, x, y + 1);
+                    return;
+                }
+            }
+            
+            if (Math.random() < 0.2) {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH) {
+                    if (y + 1 < HEIGHT && (grid[y + 1][nx] === EMPTY || grid[y + 1][nx] === WATER)) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                    if (grid[y][nx] === EMPTY || grid[y][nx] === WATER) {
+                        swap(x, y, nx, y);
+                    }
+                }
+            }
+        }
+        
+        function updateAcid(x, y) {
+            // Dissolve materials
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const neighbor = grid[ny][nx];
+                        if (neighbor !== EMPTY && neighbor !== ACID && neighbor !== GLASS && 
+                            neighbor !== STONE && !isMachine(neighbor) && Math.random() < 0.03) {
+                            setCell(nx, ny, EMPTY);
+                            if (Math.random() < 0.3) {
+                                setCell(x, y, Math.random() < 0.5 ? SMOKE : EMPTY);
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Flow like water
+            if (y + 1 < HEIGHT && grid[y + 1][x] === EMPTY) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            if (y + 1 < HEIGHT) {
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y + 1][nx] === EMPTY) {
+                    swap(x, y, nx, y + 1);
+                    return;
+                }
+            }
+            
+            const nx = x + dir;
+            if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                swap(x, y, nx, y);
+            }
+        }
+        
+        function updatePlant(x, y) {
+            let nearWater = false;
+            
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] === WATER) {
+                            nearWater = true;
+                        }
+                    }
+                }
+            }
+            
+            // Grow if near water
+            if (nearWater && Math.random() < 0.02) {
+                const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                const [dx, dy] = directions[Math.floor(Math.random() * directions.length)];
+                const nx = x + dx, ny = y + dy;
+                if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT && grid[ny][nx] === EMPTY) {
+                    setCell(nx, ny, PLANT);
+                }
+            }
+            
+            // Consume water occasionally
+            if (nearWater && Math.random() < 0.005) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT && grid[ny][nx] === WATER) {
+                            setCell(nx, ny, EMPTY);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        function updateGunpowder(x, y) {
+            // Check for fire/lava nearby - explode!
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] === FIRE || grid[ny][nx] === LAVA) {
+                            explode(x, y, 5 + Math.floor(Math.random() * 3));
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // Fall like sand
+            if (y + 1 >= HEIGHT) return;
+            
+            const below = grid[y + 1][x];
+            if (below === EMPTY || below === WATER || below === OIL) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            for (const d of [dir, -dir]) {
+                const nx = x + d;
+                if (nx >= 0 && nx < WIDTH) {
+                    const diag = grid[y + 1][nx];
+                    if (diag === EMPTY || diag === WATER || diag === OIL) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function updateSalt(x, y) {
+            // Dissolve in water
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if (grid[ny][nx] === WATER && Math.random() < 0.05) {
+                            setCell(x, y, EMPTY);
+                            return;
+                        }
+                        // Salt melts ice
+                        if (grid[ny][nx] === ICE && Math.random() < 0.02) {
+                            setCell(nx, ny, WATER);
+                        }
+                    }
+                }
+            }
+            
+            // Fall like sand
+            if (y + 1 >= HEIGHT) return;
+            
+            const below = grid[y + 1][x];
+            if (below === EMPTY || below === WATER || below === OIL) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            for (const d of [dir, -dir]) {
+                const nx = x + d;
+                if (nx >= 0 && nx < WIDTH && y + 1 < HEIGHT) {
+                    const diag = grid[y + 1][nx];
+                    if (diag === EMPTY || diag === WATER || diag === OIL) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function updateMud(x, y) {
+            // Dry out occasionally near fire
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        if ((grid[ny][nx] === FIRE || grid[ny][nx] === LAVA) && Math.random() < 0.02) {
+                            setCell(x, y, SAND);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // Flow like thick liquid
+            if (y + 1 < HEIGHT && grid[y + 1][x] === EMPTY) {
+                swap(x, y, x, y + 1);
+                return;
+            }
+            
+            // Slow horizontal spread
+            if (Math.random() < 0.1) {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                if (y + 1 < HEIGHT) {
+                    const nx = x + dir;
+                    if (nx >= 0 && nx < WIDTH && grid[y + 1][nx] === EMPTY) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+                
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                }
+            }
+        }
+        
+        function updateSnow(x, y) {
+            // Melt near heat
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const neighbor = grid[ny][nx];
+                        if ((neighbor === FIRE || neighbor === LAVA) && Math.random() < 0.3) {
+                            setCell(x, y, WATER);
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // Fall slowly
+            if (Math.random() < 0.3 && y + 1 < HEIGHT) {
+                const below = grid[y + 1][x];
+                if (below === EMPTY) {
+                    swap(x, y, x, y + 1);
+                    return;
+                }
+                
+                // Pile up with some spread
+                if (Math.random() < 0.5) {
+                    const dir = Math.random() < 0.5 ? -1 : 1;
+                    const nx = x + dir;
+                    if (nx >= 0 && nx < WIDTH && grid[y + 1][nx] === EMPTY) {
+                        swap(x, y, nx, y + 1);
+                        return;
+                    }
+                }
+            }
+            
+            // Drift horizontally sometimes
+            if (Math.random() < 0.05) {
+                const dir = Math.random() < 0.5 ? -1 : 1;
+                const nx = x + dir;
+                if (nx >= 0 && nx < WIDTH && grid[y][nx] === EMPTY) {
+                    swap(x, y, nx, y);
+                }
+            }
+        }
+        
+        function updateMetal(x, y) {
+            // Conduct heat - check for nearby fire/lava
+            let nearHeat = false;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                        const neighbor = grid[ny][nx];
+                        if (neighbor === FIRE || neighbor === LAVA) {
+                            nearHeat = true;
+                            heat[y][x] = Math.min(100, heat[y][x] + 5);
+                        }
+                        // Spread heat to other metals
+                        if (neighbor === METAL && heat[ny][nx] > heat[y][x]) {
+                            heat[y][x] = Math.min(100, heat[y][x] + 1);
+                        }
+                    }
+                }
+            }
+            
+            // Cool down slowly
+            if (!nearHeat && heat[y][x] > 0) {
+                heat[y][x] = Math.max(0, heat[y][x] - 0.1);
+            }
+            
+            // Hot metal can ignite things
+            if (heat[y][x] > 50) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            const neighbor = grid[ny][nx];
+                            if (neighbor === WOOD && Math.random() < 0.01) {
+                                setCell(nx, ny, FIRE);
+                            }
+                            if (neighbor === OIL && Math.random() < 0.02) {
+                                setCell(nx, ny, FIRE);
+                            }
+                            if (neighbor === GUNPOWDER && Math.random() < 0.03) {
+                                explode(nx, ny, 5);
+                            }
+                            if ((neighbor === ICE || neighbor === SNOW) && Math.random() < 0.05) {
+                                setCell(nx, ny, WATER);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Render
+        function render() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            let count = 0;
+            
+            for (let y = 0; y < HEIGHT; y++) {
+                for (let x = 0; x < WIDTH; x++) {
+                    const m = grid[y][x];
+                    if (m !== EMPTY) {
+                        count++;
+                        const colors = COLORS[m];
+                        if (colors) {
+                            let color = colors[colorVar[y][x]];
+                            
+                            // Hot metal glows
+                            if (m === METAL && heat[y][x] > 20) {
+                                const heatLevel = Math.min(1, heat[y][x] / 100);
+                                const r = Math.floor(113 + heatLevel * 142);
+                                const g = Math.floor(121 - heatLevel * 80);
+                                const b = Math.floor(126 - heatLevel * 126);
+                                color = `rgb(${r}, ${g}, ${b})`;
+                            }
+                            
+                            ctx.fillStyle = color;
+                            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                        }
+                    }
+                }
+            }
+            
+            particleCountEl.textContent = count;
+        }
+        
+        // Save/Load
+        function saveSimulation() {
+            const data = { width: WIDTH, height: HEIGHT, grid, colorVar, energy, heat };
+            const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'sand_simulation.sand';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function loadSimulation(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (data.width === WIDTH && data.height === HEIGHT) {
+                        grid = data.grid;
+                        colorVar = data.colorVar;
+                        energy = data.energy || 0;
+                        heat = data.heat || [];
+                        if (heat.length === 0) {
+                            for (let y = 0; y < HEIGHT; y++) {
+                                heat[y] = new Array(WIDTH).fill(0);
+                            }
+                        }
+                        updateEnergyDisplay();
+                    } else {
+                        alert('Incompatible save file!');
+                    }
+                } catch (err) {
+                    alert('Failed to load!');
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        }
+        
+        // Game loop
+        function gameLoop() {
+            for (let i = 0; i < simulationSpeed; i++) {
+                simulate();
+            }
+            render();
+            
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+                fpsEl.textContent = fps;
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start
+        gameLoop();
+        
+        console.log('Simulation started with 9 new materials! Click on the canvas to draw.');
+    </script>
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MellorCraft v1.0.0</title>
+    <title>MellorCraft v1.1.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; }
@@ -297,7 +297,7 @@
 <body>
     <div id="startScreen">
         <h1>MellorCraft</h1>
-        <h2>v1.0.0</h2>
+        <h2>v1.1.0</h2>
         <div class="seedLabel">Enter World Seed (or leave empty for random)</div>
         <input type="text" id="seedInput" placeholder="Enter seed...">
         <div class="btnContainer">
@@ -669,8 +669,23 @@
             [BLOCKS.MELLORITE_ORE]: ITEMS.MELLORITE
         };
 
-        const BIOMES = { PLAINS: 0, DESERT: 1, FOREST: 2, SNOW: 3, TAIGA: 4, STONY_PEAKS: 5, BADLANDS: 6 };
-        const BIOME_NAMES = ['Plains', 'Desert', 'Forest', 'Mountains', 'Taiga', 'Stony Peaks', 'Badlands'];
+        const BIOMES = { 
+            PLAINS: 0, 
+            DESERT_BARREN: 1, 
+            DESERT_CACTUS: 2, 
+            FOREST: 3, 
+            MOUNTAINS_LOW: 4, 
+            MOUNTAINS_MID: 5, 
+            MOUNTAINS_HIGH: 6, 
+            TAIGA: 7, 
+            STONY_PEAKS: 8, 
+            BADLANDS: 9 
+        };
+        const BIOME_NAMES = [
+            'Plains', 'Barren Desert', 'Cactus Desert', 'Forest', 
+            'Low Mountains', 'Mountains', 'High Mountains', 
+            'Taiga', 'Stony Peaks', 'Badlands'
+        ];
 
         // Recipes
         const RECIPES = [
@@ -849,7 +864,6 @@
             ]);
         }
 
-        // Added uniform scale factor for rendering mobs of different sizes accurately
         function modelMatrix(x, y, z, rotY = 0, s = 1) {
             const c = Math.cos(rotY), sRot = Math.sin(rotY);
             return new Float32Array([
@@ -964,7 +978,7 @@
             }
         }
 
-        let noise, biomeNoise, treeNoise, caveNoise, oreNoise, ravineNoise;
+        let noise, biomeNoise, treeNoise, caveNoise, oreNoise, ravineNoise, structNoise;
 
         const chunks = new Map();
         const chunkMeshes = new Map();
@@ -975,69 +989,96 @@
             return a + (b - a) * Math.max(0, Math.min(1, t));
         }
 
-        function getBiome(x, z) {
-            // Temperature & Moisture 2D Matrix matching the exact requested rarity
-            const temp = biomeNoise.octave(x * 0.002, z * 0.002, 3, 0.5);
-            const moist = biomeNoise.octave(x * 0.002 + 5000, z * 0.002 + 5000, 3, 0.5);
+        function getClimate(x, z) {
+            const scale = 0.0008;
+            const temp = biomeNoise.octave(x * scale, z * scale, 3, 0.5);
+            const moist = biomeNoise.octave(x * scale + 5000, z * scale + 5000, 3, 0.5);
+            return { temp, moist };
+        }
 
-            if (temp > 0.25) { // Hot Band (~25% of the world)
-                // Badlands = 10%, Desert = 15%
-                if (moist < -0.1) return BIOMES.BADLANDS;
-                return BIOMES.DESERT;
-            } else if (temp < -0.1) { // Cold Band (~40% of the world)
-                // Stony Peaks = 5%, Taiga = 15%, Mountains(Snow) = 20%
-                if (moist < -0.4) return BIOMES.STONY_PEAKS;
-                if (moist > 0.1) return BIOMES.SNOW;
+        function getBiome(x, z) {
+            const { temp, moist } = getClimate(x, z);
+
+            if (temp > 0.3) {
+                if (moist < -0.15) return BIOMES.BADLANDS;
+                if (moist < 0.1) return BIOMES.DESERT_BARREN; 
+                return BIOMES.DESERT_CACTUS; 
+            } else if (temp < -0.15) { 
+                if (moist < -0.70) return BIOMES.STONY_PEAKS;
+                if (moist > 0.6) return BIOMES.MOUNTAINS_HIGH;
+                if (moist > 0.0) return BIOMES.MOUNTAINS_MID;
+                if (moist > -0.3) return BIOMES.MOUNTAINS_LOW;
                 return BIOMES.TAIGA;
-            } else { // Temperate Mid Band (~35% of the world)
-                // Plains = 20%, Forest = 15%
-                if (moist > 0.1) return BIOMES.FOREST;
+            } else { 
+                if (moist > -0.2) return BIOMES.FOREST;
                 return BIOMES.PLAINS;
             }
         }
 
         function getHeight(x, z, biome) {
-            const temp = biomeNoise.octave(x * 0.002, z * 0.002, 3, 0.5);
-            const moist = biomeNoise.octave(x * 0.002 + 5000, z * 0.002 + 5000, 3, 0.5);
+            const { temp, moist } = getClimate(x, z);
             
-            // Smoothstep function creates a seamless mathematical blend
-            function smoothstep(edge0, edge1, x) {
-                const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+            function smoothstep(edge0, edge1, val) {
+                const t = Math.max(0, Math.min(1, (val - edge0) / (edge1 - edge0)));
                 return t * t * (3 - 2 * t);
             }
 
-            // 1. Calculate continuous temperature weights
-            const w_hot = smoothstep(0.1, 0.4, temp);
-            const w_cold = smoothstep(0.05, -0.25, temp);
+            // Temperature weights
+            const w_hot = smoothstep(0.15, 0.45, temp); 
+            const w_cold = smoothstep(0.0, -0.3, temp); 
             const w_temp_mid = Math.max(0, 1.0 - w_hot - w_cold);
 
-            // 2. Calculate continuous moisture weights
-            const w_wet = smoothstep(-0.05, 0.2, moist);
-            const w_dry = smoothstep(0.05, -0.25, moist);
-            const w_v_dry = smoothstep(-0.2, -0.5, moist);
+            // Hot biomes (Desert, Badlands)
+            const w_dry_hot = smoothstep(0.0, -0.3, moist); 
+            const hotBase = w_dry_hot * 40 + (1 - w_dry_hot) * 25; 
+            const hotAmp  = w_dry_hot * 15 + (1 - w_dry_hot) * 4;
 
-            // 3. Define target characteristics for each major region based on moisture
-            const hotBase = w_dry * 40 + (1 - w_dry) * 25; // Badlands vs Desert
-            const hotAmp  = w_dry * 15 + (1 - w_dry) * 4;
+            // Mid biomes (Plains, Forest)
+            const w_wet_mid = smoothstep(-0.4, 0.0, moist);  
+            const midBase = w_wet_mid * 34 + (1 - w_wet_mid) * 30; 
+            const midAmp  = w_wet_mid * 14 + (1 - w_wet_mid) * 10;
 
-            const midBase = w_wet * 34 + (1 - w_wet) * 30; // Forest vs Plains
-            const midAmp  = w_wet * 14 + (1 - w_wet) * 10;
+            // Cold biomes (Stony Peaks, Taiga, Mountains)
+            let coldBase = 28; // Default Taiga Base
+            let coldAmp = 6;   // Default Taiga Amp
+            
+            if (moist < -0.4) {
+                // Blend down to Stony Peaks (-0.8 and below)
+                const w_peaks = smoothstep(-0.4, -0.8, moist);
+                coldBase = 28 + w_peaks * (50 - 28);
+                coldAmp = 6 + w_peaks * (25 - 6);
+            } else {
+                // Blend up through the Mountains (Low -> Mid -> High)
+                // Moist from -0.4 (start of Taiga transition) to 0.8 (High peak)
+                const w_mts = smoothstep(-0.4, 0.8, moist);
+                
+                // Continuous ramp: 
+                // Low Mts (~0.2 weight) = Amp ~11 (bumpier than plains' 10)
+                // Mid Mts (~0.5 weight) = Amp ~19
+                // High Mts (~0.9 weight) = Amp ~29, max base ~43 (Max height: 43+29 = 72 < 100)
+                coldBase = 28 + w_mts * (45 - 28);
+                coldAmp = 6 + w_mts * (32 - 6);
+            }
 
-            const taigaWeight = Math.max(0, 1.0 - w_v_dry - w_wet);
-            const coldBase = w_v_dry * 50 + taigaWeight * 28 + w_wet * 45; // Peaks vs Taiga vs Snow
-            const coldAmp  = w_v_dry * 25 + taigaWeight * 4  + w_wet * 30;
-
-            // 4. Final Bilinear Interpolation based on temperature
             const baseHeight = hotBase * w_hot + midBase * w_temp_mid + coldBase * w_cold;
             const amplitude = hotAmp * w_hot + midAmp * w_temp_mid + coldAmp * w_cold;
 
-            // 5. Add universal small-scale noise bumps
             const n = noise.octave(x * 0.015, z * 0.015, 4, 0.5);
             return Math.floor(baseHeight + n * amplitude);
         }
 
         function posRand(x, z, off = 0) {
             return (treeNoise.noise2D(x * 0.1 + off, z * 0.1 + off) + 1) * 0.5;
+        }
+        
+        function posRand3D(x, y, z, off=0) {
+            return (structNoise.noise3D(x*0.1+off, y*0.1+off, z*0.1+off) + 1) * 0.5;
+        }
+
+        function coordHash(x, y, z, seed = 0) {
+            let h = Math.imul(x + seed, 374761393) ^ Math.imul(y + seed, 668265263) ^ Math.imul(z + seed, 878028967);
+            h = Math.imul(h ^ (h >>> 13), 1274126177);
+            return (h ^ (h >>> 16)) / 4294967296.0 + 0.5;
         }
 
         function isCave(x, y, z) {
@@ -1049,69 +1090,79 @@
 
         function isRavine(x, y, z) {
             if (y <= 2 || y > 55) return false;
-            // Use 3D noise stretched on Y to create vertical cuts
-            // We use ridged noise (abs(noise)) to create narrow paths
             const rVal = Math.abs(ravineNoise.noise3D(x * 0.02, y * 0.005, z * 0.02));
-            
-            // Mask ravine generation so they aren't everywhere
             const mask = ravineNoise.noise2D(x * 0.002, z * 0.002);
-            
-            // If inside mask area AND close to ridge center
             if (mask > 0.95 && rVal < 0.06) {
-                // Taper off at bottom
                 if (y < 10) return rVal < 0.06 * (y / 10);
                 return true;
             }
             return false;
         }
 
-        // Ore vein sizes: Coal=8, Iron=4, Gold=2, Diamond=1, Mellorite=1
         const ORE_VEIN_SIZE = {
-            [BLOCKS.COAL_ORE]: 8,
-            [BLOCKS.IRON_ORE]: 4,
-            [BLOCKS.GOLD_ORE]: 2,
-            [BLOCKS.DIAMOND_ORE]: 1,
-            [BLOCKS.MELLORITE_ORE]: 1
+            [BLOCKS.COAL_ORE]: 8, [BLOCKS.IRON_ORE]: 4, [BLOCKS.GOLD_ORE]: 2,
+            [BLOCKS.DIAMOND_ORE]: 1, [BLOCKS.MELLORITE_ORE]: 1
         };
 
         function getOreType(x, y, z) {
-            // Only generate ores below surface
             if (y > 25) return null;
             
-            // Use different noise scales for vein centers
             const coalCenter = oreNoise.noise3D(x * 0.08, y * 0.08, z * 0.08);
             const ironCenter = oreNoise.noise3D(x * 0.12 + 50, y * 0.12, z * 0.12 + 50);
             const goldCenter = oreNoise.noise3D(x * 0.18 + 100, y * 0.18, z * 0.18 + 100);
             const diamondCenter = oreNoise.noise3D(x * 0.25 + 150, y * 0.25, z * 0.25 + 150);
             const melloriteCenter = oreNoise.noise3D(x * 0.3 + 200, y * 0.3, z * 0.3 + 200);
             
-            // Mellorite: extremely rare, y < 8
-            if (y < 8 && melloriteCenter > 0.97) {
-                return BLOCKS.MELLORITE_ORE;
-            }
-            
-            // Diamond: very rare, y < 12, single blocks
-            if (y < 12 && diamondCenter > 0.92) {
-                return BLOCKS.DIAMOND_ORE;
-            }
-            
-            // Gold: rare, y < 15, max 2 blocks (tight threshold)
+            if (y < 8 && melloriteCenter > 0.97) return BLOCKS.MELLORITE_ORE;
+            if (y < 12 && diamondCenter > 0.92) return BLOCKS.DIAMOND_ORE;
             if (y < 15 && goldCenter > 0.88) {
-                // Secondary check for vein size limit
                 const goldSpread = oreNoise.noise3D(x * 0.5 + 100, y * 0.5, z * 0.5 + 100);
                 if (goldSpread > 0.3) return BLOCKS.GOLD_ORE;
             }
-            
-            // Iron: y < 20, max 4 blocks
             if (y < 20 && ironCenter > 0.84) {
                 const ironSpread = oreNoise.noise3D(x * 0.4 + 50, y * 0.4, z * 0.4 + 50);
                 if (ironSpread > 0.1) return BLOCKS.IRON_ORE;
             }
-            
-            // Coal: y < 25, max 8 blocks (more common)
             if (y < 25 && coalCenter > 0.70) {
                 const coalSpread = oreNoise.noise3D(x * 0.3, y * 0.3, z * 0.3);
                 if (coalSpread > -0.1) return BLOCKS.COAL_ORE;
+            }
+            return null;
+        }
+
+        function getSurfaceStructure(wx, wz) {
+            // Mansions
+            const mGrid = 128;
+            const mCellX = Math.floor(wx / mGrid);
+            const mCellZ = Math.floor(wz / mGrid);
+            const mHash = posRand(mCellX * 10, mCellZ * 10);
+            if (mHash > 0.95) { 
+                const mCenterX = mCellX * mGrid + Math.floor(posRand(mCellX, mCellZ, 1)*64) + 32;
+                const mCenterZ = mCellZ * mGrid + Math.floor(posRand(mCellX, mCellZ, 2)*64) + 32;
+                const centerBiome = getBiome(mCenterX, mCenterZ);
+                if (centerBiome === BIOMES.FOREST) {
+                    const mWidth = 15, mDepth = 15; 
+                    if (Math.abs(wx - mCenterX) <= mWidth && Math.abs(wz - mCenterZ) <= mDepth) {
+                        return { type: 'MANSION', cx: mCenterX, cz: mCenterZ, dx: wx - mCenterX, dz: wz - mCenterZ };
+                    }
+                }
+            }
+            
+            // Cabins
+            const cGrid = 64;
+            const cCellX = Math.floor(wx / cGrid);
+            const cCellZ = Math.floor(wz / cGrid);
+            const cHash = posRand(cCellX * 20, cCellZ * 20);
+            if (cHash > 0.85) { 
+                const cCenterX = cCellX * cGrid + Math.floor(posRand(cCellX, cCellZ, 3)*32) + 16;
+                const cCenterZ = cCellZ * cGrid + Math.floor(posRand(cCellX, cCellZ, 4)*32) + 16;
+                const centerBiome = getBiome(cCenterX, cCenterZ);
+                if (centerBiome === BIOMES.MOUNTAINS_LOW || centerBiome === BIOMES.MOUNTAINS_MID || centerBiome === BIOMES.MOUNTAINS_HIGH || centerBiome === BIOMES.TAIGA) {
+                    const cWidth = 3, cDepth = 3; 
+                    if (Math.abs(wx - cCenterX) <= cWidth && Math.abs(wz - cCenterZ) <= cDepth) {
+                        return { type: 'CABIN', cx: cCenterX, cz: cCenterZ, dx: wx - cCenterX, dz: wz - cCenterZ };
+                    }
+                }
             }
             
             return null;
@@ -1127,10 +1178,15 @@
                     const biome = getBiome(wx, wz);
                     const height = getHeight(wx, wz, biome);
                     
+                    const struct = getSurfaceStructure(wx, wz);
+                    let structBaseY = 0;
+                    if (struct) {
+                        structBaseY = getHeight(struct.cx, struct.cz, getBiome(struct.cx, struct.cz));
+                    }
+                    
                     for (let y = 0; y < WORLD_HEIGHT; y++) {
                         const idx = x + y * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
                         
-                        // Check for ravines (cuts through everything but bedrock)
                         if (y > 0 && isRavine(wx, y, wz)) {
                             chunk[idx] = BLOCKS.AIR;
                             continue;
@@ -1141,14 +1197,121 @@
                             continue;
                         }
                         
+                        // Surface Structures
+                        if (struct) {
+                            if (struct.type === 'MANSION') {
+                                const localY = y - structBaseY;
+                                
+                                // Offset structure relative positions for grid modulo math 
+                                // Struct spans dx = -15 to 15 (width 31)
+                                const mx = struct.dx + 15; 
+                                const mz = struct.dz + 15;
+                                
+                                const isOuterWall = mx === 0 || mx === 30 || mz === 0 || mz === 30;
+                                const isInnerWall = (mx % 6 === 0 || mz % 6 === 0) && !isOuterWall;
+                                const isRoomCenter = (mx % 6 === 3) && (mz % 6 === 3);
+                                const isDoorway = isInnerWall && localY < 3 && ((mx % 6 === 3) || (mz % 6 === 3));
+
+                                if (localY >= 0 && localY < 12) {
+                                    if (localY === 0) chunk[idx] = BLOCKS.PLANKS; // Floor
+                                    else if (localY === 11) chunk[idx] = BLOCKS.BRICK; // Roof
+                                    else if (isOuterWall) {
+                                        // Windows on outer walls
+                                        if (localY > 2 && localY < 6 && (mx % 3 === 0 || mz % 3 === 0)) {
+                                            chunk[idx] = BLOCKS.GLASS;
+                                        } else {
+                                            chunk[idx] = BLOCKS.BRICK; 
+                                        }
+                                    }
+                                    else if (isInnerWall && !isDoorway) {
+                                        chunk[idx] = BLOCKS.PLANKS; // Inner Walls
+                                    }
+                                    else {
+                                        chunk[idx] = BLOCKS.AIR;
+                                        // Spawn One Ore in the center of each room at floor level
+                                        if (localY === 1 && isRoomCenter) {
+                                            const mRand = coordHash(wx, 0, wz); 
+                                            if (mRand < 0.02) chunk[idx] = BLOCKS.MELLORITE_ORE;
+                                            else if (mRand < 0.10) chunk[idx] = BLOCKS.DIAMOND_ORE;
+                                            else if (mRand < 0.20) chunk[idx] = BLOCKS.GOLD_ORE;
+                                            else if (mRand < 0.50) chunk[idx] = BLOCKS.IRON_ORE;
+                                            else chunk[idx] = BLOCKS.COAL_ORE;
+                                        }
+                                    }
+                                    continue;
+                                } else if (localY < 0 && y >= structBaseY - 10) {
+                                    if (y >= height) {
+                                         chunk[idx] = BLOCKS.COBBLESTONE; // Foundation
+                                         continue;
+                                    }
+                                }
+                            } else if (struct.type === 'CABIN') {
+                                const localY = y - structBaseY;
+                                const isWall = Math.abs(struct.dx) === 3 || Math.abs(struct.dz) === 3;
+                                if (localY >= 0 && localY < 5) {
+                                    if (localY === 0) chunk[idx] = BLOCKS.WOOD; 
+                                    else if (localY === 4) chunk[idx] = BLOCKS.PLANKS; 
+                                    else if (isWall) chunk[idx] = BLOCKS.PLANKS; 
+                                    else {
+                                        chunk[idx] = BLOCKS.AIR;
+                                        if (localY === 1 && struct.dx === 2 && struct.dz === 2) {
+                                            const cRand = coordHash(struct.cx, struct.cz, 0); 
+                                            if (cRand < 0.02) chunk[idx] = BLOCKS.MELLORITE_BLOCK;
+                                            else if (cRand < 0.10) chunk[idx] = BLOCKS.DIAMOND_BLOCK;
+                                            else if (cRand < 0.20) chunk[idx] = BLOCKS.GOLD_BLOCK;
+                                            else if (cRand < 0.50) chunk[idx] = BLOCKS.IRON_BLOCK;
+                                            else chunk[idx] = BLOCKS.COAL_BLOCK;
+                                        }
+                                    }
+                                    continue;
+                                } else if (localY < 0 && y >= structBaseY - 5) {
+                                    if (y >= height) {
+                                        chunk[idx] = BLOCKS.COBBLESTONE;
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                        
                         if (y === 0) chunk[idx] = BLOCKS.STONE;
                         else if (y < height - 4) {
-                            // Check for ores
-                            const ore = getOreType(wx, y, wz);
+                            let ore = getOreType(wx, y, wz);
+                            
+                            // Mineshaft Ore Boost
+                            if (!ore && y > 5 && y < 35 && y < height - 5) {
+                                const msMask = structNoise.noise2D(wx * 0.01, wz * 0.01);
+                                if (msMask > 0.6) {
+                                    const msPath = Math.abs(structNoise.noise3D(wx * 0.04, y * 0.08, wz * 0.04));
+                                    if (msPath >= 0.04 && msPath < 0.15) { 
+                                        const boostRand = posRand3D(wx, y, wz, 100);
+                                        if (boostRand > 0.95) ore = BLOCKS.COAL_ORE;
+                                        else if (boostRand > 0.98) ore = BLOCKS.IRON_ORE;
+                                    }
+                                }
+                            }
+
                             chunk[idx] = ore || BLOCKS.STONE;
+                            
+                            // Mineshaft Carving (Walkable 3x3-ish horizontal tunnels)
+                            if (y > 5 && y < 35 && y < height - 5) {
+                                const msMask = structNoise.noise2D(wx * 0.01, wz * 0.01);
+                                if (msMask > 0.6) {
+                                    // Scale Y differently to squash it vertically and widen it horizontally
+                                    const msPath = Math.abs(structNoise.noise3D(wx * 0.04, y * 0.08, wz * 0.04));
+                                    if (msPath < 0.04) {
+                                        chunk[idx] = BLOCKS.AIR;
+                                    } else if (msPath >= 0.04 && msPath < 0.06 && chunk[idx] === BLOCKS.STONE) {
+                                        // Ensure planks only lay down as floor by checking if block directly above is carved out
+                                        const msAbove = Math.abs(structNoise.noise3D(wx * 0.04, (y+1) * 0.08, wz * 0.04));
+                                        if (msAbove < 0.04) {
+                                            chunk[idx] = BLOCKS.PLANKS;
+                                        }
+                                    }
+                                }
+                            }
                         }
                         else if (y < height) {
-                            if (biome === BIOMES.DESERT) chunk[idx] = BLOCKS.SAND;
+                            if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN) chunk[idx] = BLOCKS.SAND;
                             else if (biome === BIOMES.BADLANDS) {
                                 if (y % 5 === 0) chunk[idx] = BLOCKS.TERRACOTTA;
                                 else chunk[idx] = BLOCKS.RED_SAND;
@@ -1157,9 +1320,9 @@
                             else chunk[idx] = BLOCKS.DIRT;
                         }
                         else if (y === height) {
-                            if (biome === BIOMES.DESERT) chunk[idx] = BLOCKS.SAND;
+                            if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN) chunk[idx] = BLOCKS.SAND;
                             else if (biome === BIOMES.BADLANDS) chunk[idx] = BLOCKS.RED_SAND;
-                            else if (biome === BIOMES.SNOW || biome === BIOMES.TAIGA) chunk[idx] = BLOCKS.SNOW;
+                            else if (biome === BIOMES.MOUNTAINS_LOW || biome === BIOMES.MOUNTAINS_MID || biome === BIOMES.MOUNTAINS_HIGH || biome === BIOMES.TAIGA) chunk[idx] = BLOCKS.SNOW;
                             else if (biome === BIOMES.STONY_PEAKS) chunk[idx] = BLOCKS.STONE;
                             else chunk[idx] = BLOCKS.GRASS;
                         }
@@ -1167,40 +1330,41 @@
                     
                     // Trees
                     const tr = posRand(wx, wz);
-                    if ((biome === BIOMES.FOREST && tr < 0.08) || (biome === BIOMES.TAIGA && tr < 0.012)) {
-                        if (x >= 2 && x < CHUNK_SIZE - 2 && z >= 2 && z < CHUNK_SIZE - 2) {
-                            // Ensure tree base is solid (not floating over ravine)
-                            const baseIdx = x + height * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
-                            if (chunk[baseIdx] !== BLOCKS.AIR) {
-                                const th = 4 + Math.floor(posRand(wx, wz, 50) * 3);
-                                for (let ty = 0; ty < th; ty++) {
-                                    const idx = x + (height + 1 + ty) * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
-                                    if (height + 1 + ty < WORLD_HEIGHT) chunk[idx] = BLOCKS.WOOD;
-                                }
-                                for (let lx = -2; lx <= 2; lx++) {
-                                    for (let lz = -2; lz <= 2; lz++) {
-                                        for (let ly = -1; ly <= 2; ly++) {
-                                            if (Math.abs(lx) === 2 && Math.abs(lz) === 2) continue;
-                                            const leafY = height + 1 + th + ly;
-                                            if (leafY < WORLD_HEIGHT && (lx !== 0 || lz !== 0 || ly >= 0)) {
-                                                const idx = (x+lx) + leafY * CHUNK_SIZE + (z+lz) * CHUNK_SIZE * WORLD_HEIGHT;
-                                                if (chunk[idx] === BLOCKS.AIR) chunk[idx] = BLOCKS.LEAVES;
+                    if (!struct) {
+                        if ((biome === BIOMES.FOREST && tr < 0.08) || (biome === BIOMES.TAIGA && tr < 0.012)) {
+                            if (x >= 2 && x < CHUNK_SIZE - 2 && z >= 2 && z < CHUNK_SIZE - 2) {
+                                const baseIdx = x + height * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
+                                if (chunk[baseIdx] !== BLOCKS.AIR) {
+                                    const th = 4 + Math.floor(posRand(wx, wz, 50) * 3);
+                                    for (let ty = 0; ty < th; ty++) {
+                                        const idx = x + (height + 1 + ty) * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
+                                        if (height + 1 + ty < WORLD_HEIGHT) chunk[idx] = BLOCKS.WOOD;
+                                    }
+                                    for (let lx = -2; lx <= 2; lx++) {
+                                        for (let lz = -2; lz <= 2; lz++) {
+                                            for (let ly = -1; ly <= 2; ly++) {
+                                                if (Math.abs(lx) === 2 && Math.abs(lz) === 2) continue;
+                                                const leafY = height + 1 + th + ly;
+                                                if (leafY < WORLD_HEIGHT && (lx !== 0 || lz !== 0 || ly >= 0)) {
+                                                    const idx = (x+lx) + leafY * CHUNK_SIZE + (z+lz) * CHUNK_SIZE * WORLD_HEIGHT;
+                                                    if (chunk[idx] === BLOCKS.AIR) chunk[idx] = BLOCKS.LEAVES;
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                    
-                    // Cactus
-                    if (biome === BIOMES.DESERT && tr < 0.012) {
-                        const baseIdx = x + height * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
-                        if (chunk[baseIdx] !== BLOCKS.AIR) {
-                            const ch = Math.floor(posRand(wx, wz, 100) * 3) + 2;
-                            for (let cy = 0; cy < ch; cy++) {
-                                const idx = x + (height + 1 + cy) * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
-                                if (height + 1 + cy < WORLD_HEIGHT) chunk[idx] = BLOCKS.CACTUS;
+                        
+                        // Cactus
+                        if ((biome === BIOMES.DESERT_CACTUS) && tr < 0.012) {
+                            const baseIdx = x + height * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
+                            if (chunk[baseIdx] !== BLOCKS.AIR) {
+                                const ch = Math.floor(posRand(wx, wz, 100) * 3) + 2;
+                                for (let cy = 0; cy < ch; cy++) {
+                                    const idx = x + (height + 1 + cy) * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
+                                    if (height + 1 + cy < WORLD_HEIGHT) chunk[idx] = BLOCKS.CACTUS;
+                                }
                             }
                         }
                     }
@@ -1396,11 +1560,9 @@
         }
 
         function spawnPlayer() {
-            // Ensure we don't spawn in a ravine
             let x = 0, z = 0;
             let h = getHeight(0, 0, getBiome(0, 0));
             
-            // Search for safe spawn (not air at ground level)
             while(h < 1 || isRavine(x, h-1, z)) {
                 x += 16;
                 z += 16;
@@ -1457,7 +1619,6 @@
                 const dz = player.z - this.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
 
-                // Burn logic for susceptible mobs
                 if (this.type.hostile && this.type.burnsInDay && !isNight()) {
                     this.health -= dt * 2;
                     if (this.health <= 0) {
@@ -1476,7 +1637,6 @@
                     } else {
                         this.vx = 0; this.vz = 0;
                         if (this.attackCooldown <= 0 && player.invincibleTime <= 0) {
-                            // Only attack if on similar Y level (vertical reach check)
                             if (Math.abs(player.y - this.y) < 2.5) {
                                 player.health -= this.type.damage;
                                 player.invincibleTime = 0.5;
@@ -1520,15 +1680,12 @@
                 while (headAngleDiff < -Math.PI) headAngleDiff += Math.PI * 2;
                 this.headRotation += headAngleDiff * Math.min(1, dt * 10);
 
-                // Physics (Gravity & Collision)
                 this.vy += GRAVITY * dt;
 
-                // Try Vertical Movement
                 let nextY = this.y + this.vy * dt;
                 if (this.collides(this.x, nextY, this.z)) {
                     if (this.vy < 0) {
                         this.vy = 0;
-                        // Snap to integer grid + small epsilon to stay on top
                         this.y = Math.round(this.y); 
                     } else {
                         this.vy = 0;
@@ -1537,18 +1694,15 @@
                     this.y = nextY;
                 }
 
-                // Try Horizontal Movement with Auto-Step
                 let nextX = this.x + this.vx * dt;
                 let nextZ = this.z + this.vz * dt;
 
                 if (this.collides(nextX, this.y, nextZ)) {
-                    // Collision detected! Try to step up 1.1 blocks
                     if (!this.collides(nextX, this.y + 1.1, nextZ)) {
                         this.x = nextX;
                         this.z = nextZ;
                         this.y += 1.1;
                     } else {
-                        // Wall too high
                         this.vx = 0;
                         this.vz = 0;
                     }
@@ -1557,7 +1711,7 @@
                     this.z = nextZ;
                 }
 
-                if (this.y < -10) { // Void kill
+                if (this.y < -10) { 
                     const idx = mobs.indexOf(this);
                     if (idx !== -1) mobs.splice(idx, 1);
                 }
@@ -1655,11 +1809,10 @@
                 let h = getHeight(Math.floor(x), Math.floor(z), getBiome(Math.floor(x), Math.floor(z)));
                 const biome = getBiome(Math.floor(x), Math.floor(z));
                 
-                // Avoid ravines
                 if(isRavine(x, h-1, z)) continue;
                 
                 let type;
-                if (biome === BIOMES.DESERT || biome === BIOMES.BADLANDS) {
+                if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN || biome === BIOMES.BADLANDS) {
                     type = MOB_TYPES.CAMEL;
                 } else {
                     type = (Math.random() < 0.5) ? MOB_TYPES.PIG : MOB_TYPES.COW;
@@ -1681,7 +1834,6 @@
         let isChatOpen = false;
         let isMouseDown = false;
 
-        // Block breaking
         let breakingBlock = null;
         let breakProgress = 0;
 
@@ -1799,7 +1951,6 @@
             gl.viewport(0, 0, canvas.width, canvas.height);
         });
 
-        // Get current tool effectiveness
         function getCurrentToolSpeed(blockType) {
             const slot = player.inventory[player.selectedSlot];
             if (!slot || slot.count === 0) return 1;
@@ -1807,7 +1958,6 @@
             const toolStats = TOOL_SPEEDS[slot.id];
             if (!toolStats) return 1;
             
-            // Check if tool type matches block type
             if (toolStats.pickaxe && PICKAXE_BLOCKS.has(blockType)) return toolStats.pickaxe;
             if (toolStats.axe && AXE_BLOCKS.has(blockType)) return toolStats.axe;
             if (toolStats.shovel && SHOVEL_BLOCKS.has(blockType)) return toolStats.shovel;
@@ -1831,14 +1981,12 @@
             return toolStats.damage || 1;
         }
 
-        // Process block breaking
         function processBreaking(dt) {
             if (!isMouseDown || !locked || player.gamemode === 'spectator') {
                 document.getElementById('breakProgress').style.display = 'none';
                 return;
             }
 
-            // Check for mob first
             const mob = raycastMob();
             if (mob) {
                 breakingBlock = null;
@@ -1864,7 +2012,6 @@
                 breakProgress = 0;
             }
 
-            // Creative mode instant break
             if (player.gamemode === 'creative') {
                 breakBlock(hit.x, hit.y, hit.z, block);
                 return;
@@ -1890,17 +2037,14 @@
         }
 
         function breakBlock(x, y, z, block) {
-            // Check if we need specific tool tier
             const requiredTier = ORE_TIER_REQUIRED[block];
             if (requiredTier && getCurrentToolTier() < requiredTier) {
-                // Block breaks but drops nothing
                 setBlock(x, y, z, BLOCKS.AIR);
                 return;
             }
 
             setBlock(x, y, z, BLOCKS.AIR);
             
-            // Determine what to drop
             let dropId = block;
             if (ORE_DROPS[block]) {
                 dropId = ORE_DROPS[block];
@@ -1912,7 +2056,6 @@
             updateInventoryUI();
         }
 
-        // Chat & Commands
         function openChat() {
             isChatOpen = true;
             document.exitPointerLock();
@@ -1998,7 +2141,6 @@
                     const itemName = args[0].toLowerCase();
                     const giveCount = parseInt(args[1]) || 1;
                     
-                    // Find item/block by name
                     let foundId = null;
                     for (const [id, name] of Object.entries(BLOCK_NAMES)) {
                         if (name.toLowerCase().replace(' ', '') === itemName || name.toLowerCase() === itemName) {
@@ -2099,7 +2241,6 @@
             return null;
         }
 
-        // Handle mob attack on click
         let attackCooldown = 0;
 
         function handleMobAttack(dt) {
@@ -2112,7 +2253,6 @@
                     mob.health -= damage;
                     attackCooldown = 0.4;
                     if (mob.health <= 0) {
-                        // Drop meat from passive mobs & bears
                         if (!mob.type.hostile || mob.type === MOB_TYPES.BEAR) {
                             addToInventory(ITEMS.RAW_MEAT, 1);
                             updateInventoryUI();
@@ -2124,7 +2264,6 @@
             }
         }
 
-        // Physics
         function updatePlayer(dt) {
             if (player.invincibleTime > 0) player.invincibleTime -= dt;
 
@@ -2164,7 +2303,6 @@
                 if (keys['Space']) player.vy = speed;
                 if (keys['ShiftLeft']) player.vy = -speed;
                 
-                // Creative mode has collision, spectator does not
                 if (player.gamemode === 'creative') {
                     const w = 0.25, h = 1.7;
                     let nx = player.x + player.vx * dt;
@@ -2175,7 +2313,6 @@
                     if (!collides(player.x, player.y, nz, w, h)) player.z = nz;
                     if (!collides(player.x, ny, player.z, w, h)) player.y = ny;
                 } else {
-                    // Spectator - no collision
                     player.x += player.vx * dt;
                     player.y += player.vy * dt;
                     player.z += player.vz * dt;
@@ -2212,7 +2349,6 @@
             return false;
         }
 
-        // Crafting
         let craftingOpen = false;
 
         function toggleCrafting() {
@@ -2226,7 +2362,6 @@
             const c = document.getElementById('recipes');
             c.innerHTML = '';
             
-            // Group recipes by category
             const categories = {};
             for (const r of RECIPES) {
                 if (!categories[r.category]) categories[r.category] = [];
@@ -2280,9 +2415,8 @@
             updateInventoryUI();
         }
 
-        // Full Inventory
         let inventoryOpen = false;
-        let selectedInventorySlot = -1; // -1 means no slot selected
+        let selectedInventorySlot = -1; 
 
         function toggleInventory() {
             if (craftingOpen) toggleCrafting();
@@ -2300,35 +2434,29 @@
 
         function handleInventoryClick(slotIndex) {
             if (selectedInventorySlot === -1) {
-                // No slot selected - select this one if it has items
                 if (player.inventory[slotIndex].count > 0) {
                     selectedInventorySlot = slotIndex;
                     updateFullInventoryUI();
                 }
             } else {
-                // A slot is already selected - swap or stack
                 if (selectedInventorySlot === slotIndex) {
-                    // Clicking same slot - deselect
                     selectedInventorySlot = -1;
                 } else {
                     const fromSlot = player.inventory[selectedInventorySlot];
                     const toSlot = player.inventory[slotIndex];
                     
                     if (toSlot.count === 0) {
-                        // Move to empty slot
                         toSlot.id = fromSlot.id;
                         toSlot.count = fromSlot.count;
                         fromSlot.id = 0;
                         fromSlot.count = 0;
                     } else if (toSlot.id === fromSlot.id && toSlot.count < MAX_STACK_SIZE) {
-                        // Stack same items
                         const space = MAX_STACK_SIZE - toSlot.count;
                         const transfer = Math.min(space, fromSlot.count);
                         toSlot.count += transfer;
                         fromSlot.count -= transfer;
                         if (fromSlot.count === 0) fromSlot.id = 0;
                     } else {
-                        // Swap different items
                         const tempId = toSlot.id;
                         const tempCount = toSlot.count;
                         toSlot.id = fromSlot.id;
@@ -2343,7 +2471,6 @@
             }
         }
 
-        // Handle Trash Click
         document.getElementById('trashSlot').addEventListener('click', () => {
             if (selectedInventorySlot !== -1) {
                 const item = player.inventory[selectedInventorySlot];
@@ -2362,7 +2489,6 @@
             grid.innerHTML = '';
             hotbar.innerHTML = '';
             
-            // Extended inventory (slots 9-29)
             for (let i = 9; i < 30; i++) {
                 const slot = player.inventory[i] || { id: 0, count: 0 };
                 const d = document.createElement('div');
@@ -2381,7 +2507,6 @@
                 grid.appendChild(d);
             }
             
-            // Hotbar (slots 0-8)
             for (let i = 0; i < 9; i++) {
                 const slot = player.inventory[i];
                 const d = document.createElement('div');
@@ -2401,7 +2526,6 @@
                 hotbar.appendChild(d);
             }
             
-            // Update held item display
             const heldItemDiv = document.getElementById('heldItem');
             if (selectedInventorySlot >= 0 && player.inventory[selectedInventorySlot].count > 0) {
                 const item = player.inventory[selectedInventorySlot];
@@ -2412,7 +2536,6 @@
             }
         }
         
-        // Track mouse for held item display
         document.addEventListener('mousemove', (e) => {
             if (inventoryOpen && selectedInventorySlot >= 0) {
                 const heldItemDiv = document.getElementById('heldItem');
@@ -2421,7 +2544,6 @@
             }
         });
 
-        // Creative Inventory
         let creativeOpen = false;
 
         function toggleCreativeInventory() {
@@ -2443,7 +2565,6 @@
         }
 
         function getAllItems() {
-            // Add all blocks
             const blockIds = [
                 BLOCKS.GRASS, BLOCKS.DIRT, BLOCKS.STONE, BLOCKS.WOOD, BLOCKS.LEAVES,
                 BLOCKS.SAND, BLOCKS.RED_SAND, BLOCKS.SNOW, BLOCKS.PACKED_ICE, BLOCKS.CACTUS, BLOCKS.PLANKS, BLOCKS.COBBLESTONE,
@@ -2452,7 +2573,6 @@
                 BLOCKS.DIAMOND_BLOCK, BLOCKS.MELLORITE_BLOCK, BLOCKS.GLASS, BLOCKS.BRICK
             ];
             
-            // Add all items
             const itemIds = [
                 ITEMS.COAL, ITEMS.IRON_INGOT, ITEMS.GOLD_INGOT, ITEMS.DIAMOND, ITEMS.MELLORITE,
                 ITEMS.STICK, ITEMS.RAW_MEAT,
@@ -2473,7 +2593,6 @@
             
             const allItems = getAllItems();
             
-            // Blocks category
             const blocksDiv = document.createElement('div');
             blocksDiv.className = 'creative-category';
             blocksDiv.innerHTML = '<h3>🧱 Blocks</h3>';
@@ -2492,7 +2611,6 @@
             blocksDiv.appendChild(blocksGrid);
             container.appendChild(blocksDiv);
             
-            // Materials category
             const materialsDiv = document.createElement('div');
             materialsDiv.className = 'creative-category';
             materialsDiv.innerHTML = '<h3>💎 Materials</h3>';
@@ -2516,7 +2634,6 @@
             materialsDiv.appendChild(materialsGrid);
             container.appendChild(materialsDiv);
             
-            // Tools category
             const toolsDiv = document.createElement('div');
             toolsDiv.className = 'creative-category';
             toolsDiv.innerHTML = '<h3>🛠️ Tools & Weapons</h3>';
@@ -2544,7 +2661,6 @@
             toolsDiv.appendChild(toolsGrid);
             container.appendChild(toolsDiv);
             
-            // Hotbar
             const hotbar = document.getElementById('creativeHotbar');
             hotbar.innerHTML = '';
             
@@ -2570,7 +2686,6 @@
         }
 
         function giveCreativeItem(id) {
-            // Find first empty hotbar slot or add to existing stack
             for (let i = 0; i < 9; i++) {
                 if (player.inventory[i].id === id && player.inventory[i].count < MAX_STACK_SIZE) {
                     player.inventory[i].count = MAX_STACK_SIZE;
@@ -2588,7 +2703,6 @@
                     return;
                 }
             }
-            // Replace selected slot if no empty slots
             player.inventory[player.selectedSlot].id = id;
             player.inventory[player.selectedSlot].count = MAX_STACK_SIZE;
             updateCreativeInventoryUI();
@@ -2613,7 +2727,6 @@
             return 'rgba(100,100,100,0.5)';
         }
 
-        // UI
         function updateInventoryUI() {
             const c = document.getElementById('ui');
             c.innerHTML = '';
@@ -2626,7 +2739,6 @@
                     const bgColor = getSlotColor(s.id);
                     d.style.backgroundColor = bgColor;
                     
-                    // Show icon for tools
                     if (ITEM_ICONS[s.id]) {
                         d.innerHTML = `<span class="slot-icon">${ITEM_ICONS[s.id]}</span>
                                        <span class="slot-count">${s.count}</span>`;
@@ -2660,7 +2772,6 @@
             document.getElementById('timeDisplay').textContent = `Day ${time.dayCount} - ${h}:${m} (${time.period})`;
         }
 
-        // Render
         function render() {
             const sky = getSkyColor();
             gl.clearColor(sky[0], sky[1], sky[2], 1.0);
@@ -2715,11 +2826,9 @@
                 gl.drawArrays(gl.TRIANGLES, 0, m.count);
             }
 
-            // Render mobs
             for (const mob of mobs) {
                 const dx = mob.x - player.x, dz = mob.z - player.z;
                 if (dx*dx + dz*dz < 3600) {
-                    // Calculate uniform scale so the box models match the mob's height
                     const scale = mob.type.height / 1.8; 
 
                     const bodyMesh = getMobBodyMesh(mob.type);
@@ -2736,7 +2845,6 @@
                     gl.drawArrays(gl.TRIANGLES, 0, bodyMesh.count);
 
                     const headMesh = getMobHeadMesh(mob.type);
-                    // Add scaling multiplier to the head position offset so it fits precisely over the body
                     const headOffsetX = Math.sin(mob.headRotation) * 0.25 * scale;
                     const headOffsetZ = Math.cos(mob.headRotation) * 0.25 * scale;
                     gl.uniformMatrix4fv(uModel, false, modelMatrix(mob.x + headOffsetX, mob.y + 0.7 * scale, mob.z + headOffsetZ, mob.headRotation, scale));
@@ -2754,7 +2862,6 @@
             }
         }
 
-        // Game loop
         let lastTime = 0, frames = 0, fpsTime = 0;
         let hostileSpawnCooldown = 0;
 
@@ -2787,7 +2894,6 @@
 
             hostileSpawnCooldown -= dt;
             
-            // Passive Spawning (Day or Night)
             if (Math.random() < 0.09 * dt && mobs.filter(m => !m.type.hostile).length < 15) {
                 const a = Math.random() * Math.PI * 2;
                 const d = 25 + Math.random() * 35;
@@ -2797,18 +2903,16 @@
                 let h = getHeight(Math.floor(x), Math.floor(z), getBiome(Math.floor(x), Math.floor(z)));
                 const biome = getBiome(Math.floor(x), Math.floor(z));
 
-                // Spawn mob on surface, avoid ravines
                 if (!isRavine(x, h-1, z)) {
-                    if (biome === BIOMES.DESERT || biome === BIOMES.BADLANDS) {
+                    if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN || biome === BIOMES.BADLANDS) {
                         mobs.push(new Mob(MOB_TYPES.CAMEL, x, h+1, z));
-                    } else if ([BIOMES.PLAINS, BIOMES.FOREST, BIOMES.TAIGA].includes(biome)) {
+                    } else if ([BIOMES.PLAINS, BIOMES.FOREST, BIOMES.TAIGA, BIOMES.MOUNTAINS_LOW, BIOMES.MOUNTAINS_MID, BIOMES.MOUNTAINS_HIGH].includes(biome)) {
                         const type = Math.random() < 0.5 ? MOB_TYPES.PIG : MOB_TYPES.COW;
                         mobs.push(new Mob(type, x, h+1, z));
                     }
                 }
             }
 
-            // Hostile Spawning (Nighttime only for spawning, but Bears won't burn in day)
             if (isNight() && hostileSpawnCooldown <= 0 && mobs.filter(m => m.type.hostile).length < 15) {
                 const a = Math.random() * Math.PI * 2;
                 const d = 25 + Math.random() * 25;
@@ -2820,14 +2924,12 @@
 
                 if (!isRavine(x, h-1, z)) {
                     let type;
-                    // Add Bears specifically to Forest and Taiga night spawns
                     if (biome === BIOMES.FOREST || biome === BIOMES.TAIGA) {
                         const rand = Math.random();
                         if (rand < 0.33) type = MOB_TYPES.BEAR;
                         else if (rand < 0.66) type = MOB_TYPES.ZOMBIE;
                         else type = MOB_TYPES.SKELETON;
                     } else {
-                        // Standard generic hostile spawns
                         type = Math.random() < 0.5 ? MOB_TYPES.SKELETON : MOB_TYPES.ZOMBIE;
                     }
                     
@@ -2854,6 +2956,7 @@
             caveNoise = new SimplexNoise(WORLD_SEED + 3000);
             oreNoise = new SimplexNoise(WORLD_SEED + 4000);
             ravineNoise = new SimplexNoise(WORLD_SEED + 5000);
+            structNoise = new SimplexNoise(WORLD_SEED + 6000);
 
             initInventory();
             spawnPlayer();
@@ -2866,3 +2969,5 @@
     </script>
 </body>
 </html>
+
+

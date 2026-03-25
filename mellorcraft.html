@@ -376,6 +376,23 @@
         let WORLD_SEED = 0;
         let gameStarted = false;
 
+        // Config
+        const CHUNK_SIZE = 16;
+        const WORLD_HEIGHT = 100;
+        let RENDER_DISTANCE = 6;
+        let MOB_CAP = 15;
+        let espEnabled = false;
+        
+        const GRAVITY = -25;
+        const JUMP_FORCE = 9;
+        const MOVE_SPEED = 5;
+        const FLY_SPEED = 12;
+        const MOUSE_SENSITIVITY = 0.002;
+
+        const DAY_LENGTH = 600;
+        let worldTime = 0.25;
+        let dayCount = 1;
+
         // Start screen handling
         const startScreen = document.getElementById('startScreen');
         const seedInput = document.getElementById('seedInput');
@@ -420,20 +437,6 @@
             initGame();
             addChatMessage("Welcome To MellorCraft!", "chatSystem");
         }
-
-        // Config
-        const CHUNK_SIZE = 16;
-        const WORLD_HEIGHT = 100;
-        const RENDER_DISTANCE = 6;
-        const GRAVITY = -25;
-        const JUMP_FORCE = 9;
-        const MOVE_SPEED = 5;
-        const FLY_SPEED = 12;
-        const MOUSE_SENSITIVITY = 0.002;
-
-        const DAY_LENGTH = 600;
-        let worldTime = 0.25;
-        let dayCount = 1;
 
         function isNight() {
             const t = worldTime % 1;
@@ -1166,6 +1169,108 @@
             }
             
             return null;
+        }
+
+        function placeStructure(type, cx, cy, cz) {
+            const affectedChunks = new Set();
+            
+            function setBlockRaw(x, y, z, blockType) {
+                if (y < 0 || y >= WORLD_HEIGHT) return;
+                const chX = Math.floor(x / CHUNK_SIZE), chZ = Math.floor(z / CHUNK_SIZE);
+                const key = chunkKey(chX, chZ);
+                let chunk = chunks.get(key);
+                if (!chunk) { chunk = generateChunk(chX, chZ); chunks.set(key, chunk); }
+                const lx = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+                const lz = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+                chunk[lx + y * CHUNK_SIZE + lz * CHUNK_SIZE * WORLD_HEIGHT] = blockType;
+                
+                affectedChunks.add(key);
+                if (lx === 0) affectedChunks.add(chunkKey(chX - 1, chZ));
+                if (lx === CHUNK_SIZE - 1) affectedChunks.add(chunkKey(chX + 1, chZ));
+                if (lz === 0) affectedChunks.add(chunkKey(chX, chZ - 1));
+                if (lz === CHUNK_SIZE - 1) affectedChunks.add(chunkKey(chX, chZ + 1));
+            }
+
+            if (type === 'MANSION') {
+                for (let dx = -15; dx <= 15; dx++) {
+                    for (let dz = -15; dz <= 15; dz++) {
+                        const mx = dx + 15;
+                        const mz = dz + 15;
+                        const wx = cx + dx;
+                        const wz = cz + dz;
+                        const isOuterWall = mx === 0 || mx === 30 || mz === 0 || mz === 30;
+                        const isInnerWall = (mx % 6 === 0 || mz % 6 === 0) && !isOuterWall;
+                        const isRoomCenter = (mx % 6 === 3) && (mz % 6 === 3);
+                        const isDoorway = isInnerWall && ((mx % 6 === 3) || (mz % 6 === 3));
+
+                        for (let dy = -5; dy < 12; dy++) {
+                            const y = cy + dy;
+                            if (dy >= 0 && dy < 12) {
+                                if (dy === 0) setBlockRaw(wx, y, wz, BLOCKS.PLANKS);
+                                else if (dy === 11) setBlockRaw(wx, y, wz, BLOCKS.BRICK);
+                                else if (isOuterWall) {
+                                    if (dy > 2 && dy < 6 && (mx % 3 === 0 || mz % 3 === 0)) setBlockRaw(wx, y, wz, BLOCKS.GLASS);
+                                    else setBlockRaw(wx, y, wz, BLOCKS.BRICK);
+                                }
+                                else if (isInnerWall && (!isDoorway || dy >= 3)) setBlockRaw(wx, y, wz, BLOCKS.PLANKS);
+                                else {
+                                    setBlockRaw(wx, y, wz, BLOCKS.AIR);
+                                    if (dy === 1 && isRoomCenter) {
+                                        const mRand = Math.random();
+                                        if (mRand < 0.02) setBlockRaw(wx, y, wz, BLOCKS.MELLORITE_ORE);
+                                        else if (mRand < 0.10) setBlockRaw(wx, y, wz, BLOCKS.DIAMOND_ORE);
+                                        else if (mRand < 0.20) setBlockRaw(wx, y, wz, BLOCKS.GOLD_ORE);
+                                        else if (mRand < 0.50) setBlockRaw(wx, y, wz, BLOCKS.IRON_ORE);
+                                        else setBlockRaw(wx, y, wz, BLOCKS.COAL_ORE);
+                                    }
+                                }
+                            } else if (dy < 0) {
+                                const existing = getBlock(wx, y, wz);
+                                if (existing === BLOCKS.AIR || existing === BLOCKS.GRASS || existing === BLOCKS.DIRT || existing === BLOCKS.SNOW || existing === BLOCKS.SAND) {
+                                    setBlockRaw(wx, y, wz, BLOCKS.COBBLESTONE);
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (type === 'CABIN') {
+                for (let dx = -3; dx <= 3; dx++) {
+                    for (let dz = -3; dz <= 3; dz++) {
+                        const wx = cx + dx;
+                        const wz = cz + dz;
+                        const isWall = Math.abs(dx) === 3 || Math.abs(dz) === 3;
+                        for (let dy = -3; dy < 5; dy++) {
+                            const y = cy + dy;
+                            if (dy >= 0 && dy < 5) {
+                                if (dy === 0) setBlockRaw(wx, y, wz, BLOCKS.WOOD);
+                                else if (dy === 4) setBlockRaw(wx, y, wz, BLOCKS.PLANKS);
+                                else if (isWall) setBlockRaw(wx, y, wz, BLOCKS.PLANKS);
+                                else {
+                                    setBlockRaw(wx, y, wz, BLOCKS.AIR);
+                                    if (dy === 1 && dx === 2 && dz === 2) {
+                                        const cRand = Math.random();
+                                        if (cRand < 0.02) setBlockRaw(wx, y, wz, BLOCKS.MELLORITE_BLOCK);
+                                        else if (cRand < 0.10) setBlockRaw(wx, y, wz, BLOCKS.DIAMOND_BLOCK);
+                                        else if (cRand < 0.20) setBlockRaw(wx, y, wz, BLOCKS.GOLD_BLOCK);
+                                        else if (cRand < 0.50) setBlockRaw(wx, y, wz, BLOCKS.IRON_BLOCK);
+                                        else setBlockRaw(wx, y, wz, BLOCKS.COAL_BLOCK);
+                                    }
+                                }
+                            } else if (dy < 0) {
+                                const existing = getBlock(wx, y, wz);
+                                if (existing === BLOCKS.AIR || existing === BLOCKS.GRASS || existing === BLOCKS.DIRT || existing === BLOCKS.SNOW || existing === BLOCKS.SAND) {
+                                    setBlockRaw(wx, y, wz, BLOCKS.COBBLESTONE);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            for (const key of affectedChunks) {
+                const [achX, achZ] = key.split(',').map(Number);
+                rebuildChunk(achX, achZ);
+            }
         }
 
         function generateChunk(cx, cz) {
@@ -2177,6 +2282,12 @@
                     addChatMessage("/give [item] [count] - Give items", "chatSystem");
                     addChatMessage("/summon [pig|cow|camel|bear|zombie|skeleton]", "chatSystem");
                     addChatMessage("/tp [x] [y] [z] - Teleport", "chatSystem");
+                    addChatMessage("/time [0-24] - Set time of day", "chatSystem");
+                    addChatMessage("/rd [value] - Set render distance", "chatSystem");
+                    addChatMessage("/place [mansion|cabin] - Force structure", "chatSystem");
+                    addChatMessage("/esp - Toggle mob X-Ray", "chatSystem");
+                    addChatMessage("/killall - Kill loaded mobs", "chatSystem");
+                    addChatMessage("/mobcap [value] - Set max mob limit", "chatSystem");
                     break;
                 
                 case 'gamemode':
@@ -2272,6 +2383,72 @@
                         addChatMessage(`Teleported to ${tx}, ${ty}, ${tz}`, "chatSuccess");
                     } else {
                         addChatMessage("Invalid coordinates.", "chatError");
+                    }
+                    break;
+
+                case 'time':
+                    if (args.length < 1) {
+                        addChatMessage("Usage: /time [0-24]", "chatError");
+                        return;
+                    }
+                    const newTime = parseFloat(args[0]);
+                    if (!isNaN(newTime) && newTime >= 0 && newTime <= 24) {
+                        worldTime = Math.floor(worldTime) + (newTime / 24);
+                        addChatMessage(`Time set to ${newTime}`, "chatSuccess");
+                    } else {
+                        addChatMessage("Invalid time.", "chatError");
+                    }
+                    break;
+                
+                case 'rd':
+                    if (args.length < 1) {
+                        addChatMessage("Usage: /rd [distance]", "chatError");
+                        return;
+                    }
+                    const newRd = parseInt(args[0]);
+                    if (!isNaN(newRd) && newRd > 0 && newRd <= 32) {
+                        RENDER_DISTANCE = newRd;
+                        addChatMessage(`Render distance set to ${newRd}`, "chatSuccess");
+                    } else {
+                        addChatMessage("Invalid render distance.", "chatError");
+                    }
+                    break;
+                
+                case 'mobcap':
+                    if (args.length < 1) {
+                        addChatMessage("Usage: /mobcap [amount]", "chatError");
+                        return;
+                    }
+                    const newCap = parseInt(args[0]);
+                    if (!isNaN(newCap) && newCap >= 0) {
+                        MOB_CAP = newCap;
+                        addChatMessage(`Mob cap set to ${newCap}`, "chatSuccess");
+                    } else {
+                        addChatMessage("Invalid amount.", "chatError");
+                    }
+                    break;
+
+                case 'killall':
+                    mobs.length = 0;
+                    addChatMessage("Killed all loaded mobs.", "chatSuccess");
+                    break;
+
+                case 'esp':
+                    espEnabled = !espEnabled;
+                    addChatMessage(`Mob ESP ${espEnabled ? 'enabled' : 'disabled'}.`, "chatSuccess");
+                    break;
+
+                case 'place':
+                    if (args.length < 1) {
+                        addChatMessage("Usage: /place [mansion|cabin]", "chatError");
+                        return;
+                    }
+                    const structType = args[0].toUpperCase();
+                    if (structType === 'MANSION' || structType === 'CABIN') {
+                        placeStructure(structType, Math.floor(player.x), Math.floor(player.y), Math.floor(player.z));
+                        addChatMessage(`Placed ${structType} at your position!`, "chatSuccess");
+                    } else {
+                        addChatMessage("Unknown structure type.", "chatError");
                     }
                     break;
 
@@ -2923,10 +3100,16 @@
                 gl.vertexAttribPointer(aNormal, 3, gl.FLOAT, false, 0, 0);
                 gl.drawArrays(gl.TRIANGLES, 0, m.count);
             }
+            
+            // If ESP is enabled, clear the depth buffer right before rendering mobs
+            // This causes them to render completely visible through the terrain
+            if (espEnabled) {
+                gl.clear(gl.DEPTH_BUFFER_BIT);
+            }
 
             for (const mob of mobs) {
                 const dx = mob.x - player.x, dz = mob.z - player.z;
-                if (dx*dx + dz*dz < 3600) {
+                if (dx*dx + dz*dz < Math.pow(RENDER_DISTANCE * CHUNK_SIZE, 2)) { // Scale render distance with chunks
                     const scale = mob.type.height / 1.8; 
 
                     const bodyMesh = getMobBodyMesh(mob.type);
@@ -2992,7 +3175,7 @@
 
             hostileSpawnCooldown -= dt;
             
-            if (Math.random() < 0.09 * dt && mobs.filter(m => !m.type.hostile).length < 15) {
+            if (Math.random() < 0.09 * dt && mobs.filter(m => !m.type.hostile).length < Math.floor(MOB_CAP / 2)) {
                 const a = Math.random() * Math.PI * 2;
                 const d = 25 + Math.random() * 35;
                 const x = player.x + Math.cos(a) * d;
@@ -3017,7 +3200,7 @@
                 }
             }
 
-            if (isNight() && hostileSpawnCooldown <= 0 && mobs.filter(m => m.type.hostile).length < 15) {
+            if (isNight() && hostileSpawnCooldown <= 0 && mobs.filter(m => m.type.hostile).length < MOB_CAP) {
                 const a = Math.random() * Math.PI * 2;
                 const d = 25 + Math.random() * 25;
                 const x = player.x + Math.cos(a) * d;
@@ -3045,7 +3228,7 @@
             for (let i = mobs.length - 1; i >= 0; i--) {
                 const m = mobs[i];
                 const dx = m.x - player.x, dz = m.z - player.z;
-                if (dx*dx + dz*dz > 6400) mobs.splice(i, 1);
+                if (dx*dx + dz*dz > Math.pow(RENDER_DISTANCE * CHUNK_SIZE + 10, 2)) mobs.splice(i, 1);
             }
 
             updateInfo();
@@ -3073,4 +3256,3 @@
     </script>
 </body>
 </html>
-

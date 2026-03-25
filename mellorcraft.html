@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MellorCraft v1.1.1</title>
+    <title>MellorCraft v1.2.0</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { overflow: hidden; font-family: 'Courier New', monospace; background: #000; }
@@ -297,7 +297,7 @@
 <body>
     <div id="startScreen">
         <h1>MellorCraft</h1>
-        <h2>v1.1.1</h2>
+        <h2>v1.2.0</h2>
         <div class="seedLabel">Enter World Seed (or leave empty for random)</div>
         <input type="text" id="seedInput" placeholder="Enter seed...">
         <div class="btnContainer">
@@ -574,7 +574,7 @@
         };
 
         const ITEM_ICONS = {
-            [ITEMS.COAL]: 'burn me', [ITEMS.IRON_INGOT]: '🔩', [ITEMS.GOLD_INGOT]: '🥇',
+            [ITEMS.COAL]: '⬛', [ITEMS.IRON_INGOT]: '🔩', [ITEMS.GOLD_INGOT]: '🥇',
             [ITEMS.DIAMOND]: '💎', [ITEMS.STICK]: '🥢', [ITEMS.MELLORITE]: '🔮', [ITEMS.RAW_MEAT]: '🥩',
             [ITEMS.WOOD_PICKAXE]: '⛏️', [ITEMS.WOOD_AXE]: '🪓', [ITEMS.WOOD_SWORD]: '🗡️', [ITEMS.WOOD_SHOVEL]: '🔧',
             [ITEMS.STONE_PICKAXE]: '⛏️', [ITEMS.STONE_AXE]: '🪓', [ITEMS.STONE_SWORD]: '🗡️', [ITEMS.STONE_SHOVEL]: '🔧',
@@ -1171,6 +1171,10 @@
         function generateChunk(cx, cz) {
             const chunk = new Uint8Array(CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE);
             
+            const getNodeY = (nx, nz) => 10 + Math.floor(coordHash(nx, nz, 0) * 5) * 4; 
+            const hasEdgeX = (nx, nz) => coordHash(Math.floor(nx/4), Math.floor(nz/4), 50) <= 0.5 && coordHash(nx, nz, 2) < 0.6;
+            const hasEdgeZ = (nx, nz) => coordHash(Math.floor(nx/4), Math.floor(nz/4), 50) <= 0.5 && coordHash(nx, nz, 3) < 0.6;
+
             for (let x = 0; x < CHUNK_SIZE; x++) {
                 for (let z = 0; z < CHUNK_SIZE; z++) {
                     const wx = cx * CHUNK_SIZE + x;
@@ -1184,17 +1188,96 @@
                         structBaseY = getHeight(struct.cx, struct.cz, getBiome(struct.cx, struct.cz));
                     }
                     
+                    // Mineshaft Pre-calculation
+                    const cx_ms = Math.round(wx / 16);
+                    const cz_ms = Math.round(wz / 16);
+                    const dx_ms = wx - cx_ms * 16;
+                    const dz_ms = wz - cz_ms * 16;
+
+                    const inX = Math.abs(dz_ms) <= 1;
+                    const inZ = Math.abs(dx_ms) <= 1;
+
+                    let msExpectedY = -999;
+                    let msValid = false;
+
+                    if (inX && inZ) {
+                        if (hasEdgeX(cx_ms, cz_ms) || hasEdgeX(cx_ms-1, cz_ms) || hasEdgeZ(cx_ms, cz_ms) || hasEdgeZ(cx_ms, cz_ms-1)) {
+                            msExpectedY = getNodeY(cx_ms, cz_ms);
+                            msValid = true;
+                        }
+                    } else if (inX) {
+                        const edgeCx = dx_ms > 0 ? cx_ms : cx_ms - 1;
+                        if (hasEdgeX(edgeCx, cz_ms)) {
+                            const yStart = getNodeY(edgeCx, cz_ms);
+                            const yEnd = getNodeY(edgeCx + 1, cz_ms);
+                            const localX = wx - (edgeCx * 16 + 2);
+                            if (localX >= 0 && localX <= 12) {
+                                msExpectedY = yStart + Math.round((yEnd - yStart) * (localX / 12));
+                                msValid = true;
+                            }
+                        }
+                    } else if (inZ) {
+                        const edgeCz = dz_ms > 0 ? cz_ms : cz_ms - 1;
+                        if (hasEdgeZ(cx_ms, edgeCz)) {
+                            const yStart = getNodeY(cx_ms, edgeCz);
+                            const yEnd = getNodeY(cx_ms, edgeCz + 1);
+                            const localZ = wz - (edgeCz * 16 + 2);
+                            if (localZ >= 0 && localZ <= 12) {
+                                msExpectedY = yStart + Math.round((yEnd - yStart) * (localZ / 12));
+                                msValid = true;
+                            }
+                        }
+                    }
+
                     for (let y = 0; y < WORLD_HEIGHT; y++) {
                         const idx = x + y * CHUNK_SIZE + z * CHUNK_SIZE * WORLD_HEIGHT;
                         
-                        if (y > 0 && isRavine(wx, y, wz)) {
+                        let partOfStruct = false;
+                        if (struct) {
+                            const localY = y - structBaseY;
+                            if (struct.type === 'MANSION' && localY >= -10 && localY < 12) partOfStruct = true;
+                            if (struct.type === 'CABIN' && localY >= -5 && localY < 5) partOfStruct = true;
+                        }
+
+                        let isMineshaftSpace = false;
+                        let isMineshaftBridge = false;
+
+                        if (msValid && !partOfStruct && y > 5 && y < height - 5) {
+                            const localY = y - msExpectedY;
+                            if (localY >= 1 && localY <= 4) { // Increased headroom to 4 blocks for stairs!
+                                isMineshaftSpace = true;
+                            } else if (localY === 0) {
+                                if (isRavine(wx, y, wz) || isCave(wx, y, wz) || isRavine(wx, y-1, wz) || isCave(wx, y-1, wz)) {
+                                    isMineshaftBridge = true;
+                                }
+                            }
+                        }
+
+                        if (isMineshaftSpace) {
                             chunk[idx] = BLOCKS.AIR;
+                            if (inX && !inZ && (wx % 6 === 0)) {
+                                if (Math.abs(dz_ms) === 1 || (y - msExpectedY) === 4) chunk[idx] = BLOCKS.WOOD;
+                            } else if (inZ && !inX && (wz % 6 === 0)) {
+                                if (Math.abs(dx_ms) === 1 || (y - msExpectedY) === 4) chunk[idx] = BLOCKS.WOOD;
+                            }
+                            continue;
+                        }
+                        
+                        if (isMineshaftBridge) {
+                            chunk[idx] = BLOCKS.PLANKS;
                             continue;
                         }
 
-                        if (y > 0 && y < height - 2 && isCave(wx, y, wz)) {
-                            chunk[idx] = BLOCKS.AIR;
-                            continue;
+                        if (!partOfStruct) {
+                            if (y > 0 && isRavine(wx, y, wz)) {
+                                chunk[idx] = BLOCKS.AIR;
+                                continue;
+                            }
+
+                            if (y > 0 && y < height - 2 && isCave(wx, y, wz)) {
+                                chunk[idx] = BLOCKS.AIR;
+                                continue;
+                            }
                         }
                         
                         // Surface Structures
@@ -1278,37 +1361,15 @@
                             let ore = getOreType(wx, y, wz);
                             
                             // Mineshaft Ore Boost
-                            if (!ore && y > 5 && y < 35 && y < height - 5) {
-                                const msMask = structNoise.noise2D(wx * 0.01, wz * 0.01);
-                                if (msMask > 0.6) {
-                                    const msPath = Math.abs(structNoise.noise3D(wx * 0.04, y * 0.08, wz * 0.04));
-                                    if (msPath >= 0.04 && msPath < 0.15) { 
-                                        const boostRand = posRand3D(wx, y, wz, 100);
-                                        if (boostRand > 0.95) ore = BLOCKS.COAL_ORE;
-                                        else if (boostRand > 0.98) ore = BLOCKS.IRON_ORE;
-                                    }
+                            if (!ore && y > 5 && y < 35 && y < height - 5 && msValid) {
+                                if (Math.abs(y - msExpectedY) <= 4) {
+                                    const boostRand = posRand3D(wx, y, wz, 100);
+                                    if (boostRand > 0.95) ore = BLOCKS.COAL_ORE;
+                                    else if (boostRand > 0.98) ore = BLOCKS.IRON_ORE;
                                 }
                             }
 
                             chunk[idx] = ore || BLOCKS.STONE;
-                            
-                            // Mineshaft Carving (Walkable 3x3-ish horizontal tunnels)
-                            if (y > 5 && y < 35 && y < height - 5) {
-                                const msMask = structNoise.noise2D(wx * 0.01, wz * 0.01);
-                                if (msMask > 0.6) {
-                                    // Scale Y differently to squash it vertically and widen it horizontally
-                                    const msPath = Math.abs(structNoise.noise3D(wx * 0.04, y * 0.08, wz * 0.04));
-                                    if (msPath < 0.04) {
-                                        chunk[idx] = BLOCKS.AIR;
-                                    } else if (msPath >= 0.04 && msPath < 0.06 && chunk[idx] === BLOCKS.STONE) {
-                                        // Ensure planks only lay down as floor by checking if block directly above is carved out
-                                        const msAbove = Math.abs(structNoise.noise3D(wx * 0.04, (y+1) * 0.08, wz * 0.04));
-                                        if (msAbove < 0.04) {
-                                            chunk[idx] = BLOCKS.PLANKS;
-                                        }
-                                    }
-                                }
-                            }
                         }
                         else if (y < height) {
                             if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN) chunk[idx] = BLOCKS.SAND;
@@ -1485,6 +1546,7 @@
             vx: 0, vy: 0, vz: 0,
             pitch: 0, yaw: 0,
             onGround: false,
+            highestY: 50,
             health: 10, maxHealth: 10,
             invincibleTime: 3,
             timeSinceHit: 0,
@@ -1572,6 +1634,7 @@
             player.x = x + 0.5;
             player.z = z + 0.5;
             player.y = h + 3;
+            player.highestY = player.y; 
             player.health = player.maxHealth;
             player.invincibleTime = 3;
             player.timeSinceHit = 0;
@@ -1594,6 +1657,7 @@
                 this.attackCooldown = 0;
                 this.bodyRotation = Math.random() * Math.PI * 2;
                 this.headRotation = this.bodyRotation;
+                this.highestY = y;
             }
 
             collides(x, y, z) {
@@ -1619,13 +1683,15 @@
                 const dz = player.z - this.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
 
-                if (this.type.hostile && this.type.burnsInDay && !isNight()) {
+                const surfaceY = getHeight(Math.floor(this.x), Math.floor(this.z), getBiome(Math.floor(this.x), Math.floor(this.z)));
+                if (this.type.hostile && this.type.burnsInDay && !isNight() && this.y >= surfaceY) {
                     this.health -= dt * 2;
-                    if (this.health <= 0) {
-                        const idx = mobs.indexOf(this);
-                        if (idx !== -1) mobs.splice(idx, 1);
-                        return;
-                    }
+                }
+
+                if (this.health <= 0) {
+                    const idx = mobs.indexOf(this);
+                    if (idx !== -1) mobs.splice(idx, 1);
+                    return;
                 }
 
                 let targetHeadRotation = this.headRotation;
@@ -1685,13 +1751,25 @@
                 let nextY = this.y + this.vy * dt;
                 if (this.collides(this.x, nextY, this.z)) {
                     if (this.vy < 0) {
+                        const fallDist = this.highestY - this.y;
+                        if (fallDist >= 4) {
+                            this.health -= Math.floor(fallDist / 4);
+                        }
                         this.vy = 0;
                         this.y = Math.round(this.y); 
+                        this.highestY = this.y;
                     } else {
                         this.vy = 0;
                     }
                 } else {
                     this.y = nextY;
+                    this.highestY = Math.max(this.highestY, this.y);
+                }
+                
+                if (this.health <= 0) {
+                    const idx = mobs.indexOf(this);
+                    if (idx !== -1) mobs.splice(idx, 1);
+                    return;
                 }
 
                 let nextX = this.x + this.vx * dt;
@@ -2111,6 +2189,7 @@
                     if (['survival', 'creative', 'spectator'].includes(mode)) {
                         player.gamemode = mode;
                         player.vy = 0;
+                        player.highestY = player.y; // Reset highestY so you don't take damage when swapping modes in mid-air
                         addChatMessage(`Gamemode set to ${mode}`, "chatSuccess");
                         document.getElementById('gmDisplay').textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
                     } else {
@@ -2303,6 +2382,8 @@
                 if (keys['Space']) player.vy = speed;
                 if (keys['ShiftLeft']) player.vy = -speed;
                 
+                player.highestY = player.y; // Keep fall distance tracked to flight baseline
+
                 if (player.gamemode === 'creative') {
                     const w = 0.25, h = 1.7;
                     let nx = player.x + player.vx * dt;
@@ -2328,8 +2409,25 @@
 
                 if (!collides(nx, player.y, player.z, w, h)) player.x = nx;
                 if (!collides(player.x, player.y, nz, w, h)) player.z = nz;
-                if (!collides(player.x, ny, player.z, w, h)) { player.y = ny; player.onGround = false; }
-                else { if (player.vy < 0) player.onGround = true; player.vy = 0; }
+                
+                if (!collides(player.x, ny, player.z, w, h)) { 
+                    player.y = ny; 
+                    player.onGround = false; 
+                    player.highestY = Math.max(player.highestY, player.y);
+                } else { 
+                    if (player.vy < 0) {
+                        const fallDist = player.highestY - player.y;
+                        if (fallDist >= 4 && player.gamemode === 'survival') {
+                            const damage = Math.floor(fallDist / 4);
+                            player.health -= damage;
+                            showDamage();
+                            updateHealthBar();
+                        }
+                        player.onGround = true; 
+                        player.highestY = player.y;
+                    }
+                    player.vy = 0; 
+                }
 
                 if (player.y < -20) { player.health = 0; updateHealthBar(); }
             }
@@ -2906,7 +3004,13 @@
                 if (!isRavine(x, h-1, z)) {
                     if (biome === BIOMES.DESERT_CACTUS || biome === BIOMES.DESERT_BARREN || biome === BIOMES.BADLANDS) {
                         mobs.push(new Mob(MOB_TYPES.CAMEL, x, h+1, z));
-                    } else if ([BIOMES.PLAINS, BIOMES.FOREST, BIOMES.TAIGA, BIOMES.MOUNTAINS_LOW, BIOMES.MOUNTAINS_MID, BIOMES.MOUNTAINS_HIGH].includes(biome)) {
+                    } else if (biome === BIOMES.FOREST || biome === BIOMES.TAIGA) {
+                        const rand = Math.random();
+                        let type = MOB_TYPES.PIG;
+                        if (rand > 0.8) type = MOB_TYPES.BEAR;
+                        else if (rand > 0.4) type = MOB_TYPES.COW;
+                        mobs.push(new Mob(type, x, h+1, z));
+                    } else if ([BIOMES.PLAINS, BIOMES.MOUNTAINS_LOW, BIOMES.MOUNTAINS_MID, BIOMES.MOUNTAINS_HIGH].includes(biome)) {
                         const type = Math.random() < 0.5 ? MOB_TYPES.PIG : MOB_TYPES.COW;
                         mobs.push(new Mob(type, x, h+1, z));
                     }
@@ -2969,6 +3073,4 @@
     </script>
 </body>
 </html>
-
-
 

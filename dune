@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Sands of Arrakis - 3D Survival</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 10;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .hud-top, .hud-bottom {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            text-shadow: 1px 1px 2px black;
+        }
+        .vitals {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 300px;
+        }
+        .bar-container {
+            width: 100%;
+            height: 20px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid #555;
+            border-radius: 4px;
+            position: relative;
+        }
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.2s;
+        }
+        #health-fill { background: #b33; }
+        #thirst-fill { background: #38b; }
+        
+        .bar-label {
+            position: absolute;
+            top: -2px; left: 10px;
+            color: white;
+            font-size: 14px;
+            line-height: 24px;
+            font-weight: bold;
+        }
+        .stats {
+            color: #fca311;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: right;
+        }
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(20, 10, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fca311;
+            z-index: 20;
+            text-align: center;
+            pointer-events: auto;
+        }
+        h1 { font-size: 64px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 5px; color: #e6c280; }
+        p { font-size: 18px; color: #ddd; max-width: 600px; line-height: 1.5; }
+        .controls-list { text-align: left; margin: 20px 0; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 8px; border: 1px solid #555;}
+        button {
+            margin-top: 30px;
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #fca311;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        button:hover { background: #ffd166; }
+        
+        /* Damage overlay */
+        #damage-overlay {
+            position: absolute;
+            top:0; left:0; width:100%; height:100%;
+            background: radial-gradient(circle, rgba(255,0,0,0) 50%, rgba(255,0,0,0.3) 100%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 5;
+        }
+        #world-map {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            border: 3px solid #fca311;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            z-index: 15;
+            border-radius: 8px;
+        }
+        #creative-indicator {
+            position: absolute;
+            top: 440px;
+            right: 20px;
+            color: #00ff00;
+            font-weight: bold;
+            font-size: 18px;
+            display: none;
+            text-shadow: 1px 1px 2px #000;
+        }
+        #admin-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.85);
+            padding: 20px;
+            border: 2px solid #fca311;
+            border-radius: 8px;
+            z-index: 25;
+            display: none;
+            pointer-events: auto;
+            color: #ddd;
+        }
+        #admin-actions button {
+            margin: 0; padding: 5px 15px; font-size: 14px; margin-left: 10px;
+        }
+    </style>
+    <!-- Load Three.js and SimplexNoise -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+</head>
+<body>
+
+    <div id="damage-overlay"></div>
+    <canvas id="world-map" width="300" height="300"></canvas>
+    <div id="creative-indicator">CREATIVE MODE ACTIVE</div>
+    
+    <!-- Admin Controls -->
+    <div id="admin-panel">
+        <h3 style="margin-top:0; color:#fff;">Admin Controls (Extended Map)</h3>
+        <div style="margin-bottom: 10px;">
+            <label><input type="radio" name="admin-tool" value="select" checked> Select</label> &nbsp;
+            <label><input type="radio" name="admin-tool" value="worm"> Spwn Worm</label> &nbsp;
+            <label><input type="radio" name="admin-tool" value="storm"> Spwn Storm</label> &nbsp;
+            <label><input type="radio" name="admin-tool" value="spice"> Spwn Spice</label>
+        </div>
+        <div id="admin-actions" style="margin-bottom:10px;">
+            <span>Selected: <b id="sel-type" style="color:#fca311;">None</b></span>
+            <button id="btn-rotate" style="background:#55f;">Rotate Dir</button>
+            <button id="btn-despawn" style="background:#f33; color:white;">Despawn</button>
+        </div>
+        <canvas id="admin-map" width="400" height="400" style="background:#111; border: 2px solid #555; cursor:crosshair;"></canvas>
+        <div style="font-size:12px; color:#aaa; margin-top:5px;">Inner gray box is the Playable Map limit.<br>Click to use selected tool.</div>
+    </div>
+
+    <div id="ui-layer" style="display: none;">
+        <div id="crosshair">+</div>
+        <div class="hud-top"></div>
+        <div class="hud-bottom">
+            <div class="vitals">
+                <div class="bar-container">
+                    <div id="health-fill" class="bar-fill"></div>
+                    <span class="bar-label">HEALTH</span>
+                </div>
+                <div class="bar-container">
+                    <div id="thirst-fill" class="bar-fill"></div>
+                    <span class="bar-label">THIRST</span>
+                </div>
+                <div class="bar-container">
+                    <div id="canteen-fill" class="bar-fill" style="background: #2a75d3;"></div>
+                    <span class="bar-label">CANTEEN</span>
+                </div>
+            </div>
+            <div class="stats">
+                SPICE: <span id="spice-count">0</span><br>
+            </div>
+        </div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Sands of Arrakis</h1>
+        <p>Survive the harsh desert planet. Manage your thirst, harvest the precious Spice, and beware of the giant Sandworms that sense rhythmic vibrations in the sand.</p>
+        <div class="controls-list">
+            <b>Controls:</b><br>
+            [W, A, S, D] - Move<br>
+            [SPACE] - Jump<br>
+            [MOUSE] - Look around<br>
+            [C] - Toggle Creative Mode<br>
+            [M] - Toggle Admin Menu (in Creative Mode)<br>
+            <br>
+            <b>Survival Tips:</b><br>
+            - <span style="color:#38b">Blue Oasis</span> regions contain water. Walk through them to drink.<br>
+            - <span style="color:#fca311">Orange Crystals</span> are Spice. They restore health and grant score.<br>
+            - <span style="color:#aaa">Rocky Plateaus</span> mask your footsteps from Sandworms.<br>
+            - Keep moving during Sandstorms, and watch out for flying spice!
+        </div>
+        <button id="start-btn">ENTER THE DESERT</button>
+    </div>
+
+<script>
+// ==========================================
+// GLOBALS & GAME STATE
+// ==========================================
+let scene, camera, renderer, clock;
+let terrainMesh;
+let sunLight, ambientLight;
+let simplex = new SimplexNoise();
+
+// Player State
+const player = {
+    health: 100,
+    thirst: 100,
+    canteen: 0,
+    canteenMax: 100,
+    spice: 0,
+    speed: 1000,
+    jumpForce: 150,
+    velocity: new THREE.Vector3(),
+    direction: new THREE.Vector3(),
+    height: 15,
+    onGround: false,
+    moving: false,
+    inOasis: false,
+    creative: false,
+    noiseTime: 0
+};
+
+// Input State
+const keys = { KeyW: false, KeyA: false, KeyS: false, KeyD: false, Space: false, ShiftLeft: false };
+
+// Environment State
+const env = {
+    sandstormIntensity: 0,
+    worldSize: 15000,
+    chunkSize: 100,
+    stormCheckTimer: 1.0,
+    spiceTimer: 0
+};
+
+// Entities
+let storms = [];
+let worms = []; 
+let spiceNodes = []; 
+let oasisNodes = [];
+
+// Shared Materials
+let spiceGeo, spiceMat;
+let wormHeadGeo, wormSegmentGeo, wormMat;
+
+// Admin State
+let selectedEntity = null;
+let selectedType = null;
+
+// Particles
+let particleSystem, particleGeo;
+let wormDustSystem, wormDustGeo, wormDustPos, wormDustLife;
+let wormDustIndex = 0;
+const wormDustCount = 1000;
+
+// Audio Context
+let audioCtx;
+let windNode, windGain;
+
+// UI Elements
+const uiHealth = document.getElementById('health-fill');
+const uiThirst = document.getElementById('thirst-fill');
+const uiCanteen = document.getElementById('canteen-fill');
+const uiSpice = document.getElementById('spice-count');
+const damageOverlay = document.getElementById('damage-overlay');
+
+// Camera control objects
+const pitchObject = new THREE.Object3D();
+const yawObject = new THREE.Object3D();
+
+let mapBgCanvas, mapBgCtx; // Pre-rendered map background
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+function init() {
+    const canvas = document.createElement('canvas');
+    canvas.id = "gameCanvas";
+    document.body.appendChild(canvas);
+
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    scene = new THREE.Scene();
+    // Static Day Colors
+    scene.background = new THREE.Color(0x87CEEB);
+    scene.fog = new THREE.FogExp2(0xe6c280, 0.0002);
+
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 12000);
+    
+    yawObject.position.set(0, 100, 0);
+    yawObject.add(pitchObject);
+    pitchObject.add(camera);
+    scene.add(yawObject);
+
+    clock = new THREE.Clock();
+
+    const startX = (Math.random() - 0.5) * (env.worldSize * 0.8);
+    const startZ = (Math.random() - 0.5) * (env.worldSize * 0.8);
+    yawObject.position.set(startX, 200, startZ);
+
+    setupLighting();
+    buildTerrain();
+    
+    // Init Shared Geometries
+    spiceGeo = new THREE.OctahedronGeometry(3); // Made spice slightly larger
+    spiceMat = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0xaa3300, roughness: 0.2, metalness: 0.8 });
+    
+    wormSegmentGeo = new THREE.SphereGeometry(45, 16, 16);
+    wormHeadGeo = new THREE.CylinderGeometry(36, 54, 60, 16);
+    wormHeadGeo.rotateX(Math.PI/2);
+    wormMat = new THREE.MeshStandardMaterial({ color: 0x3d3124, roughness: 0.9, bumpScale: 2.0 });
+
+    populateResources();
+    
+    // Spawn initial worms
+    for (let w = 0; w < 2; w++) {
+        spawnWorm((Math.random() - 0.5) * env.worldSize, (Math.random() - 0.5) * env.worldSize);
+    }
+    
+    setupParticles();
+    generateMapBackground();
+
+    // Event Listeners
+    window.addEventListener('resize', onWindowResize, false);
+    
+    document.addEventListener('keydown', (e) => { 
+        if(keys.hasOwnProperty(e.code)) keys[e.code] = true; 
+        
+        if(e.code === 'KeyC') {
+            player.creative = !player.creative;
+            document.getElementById('world-map').style.display = player.creative ? 'block' : 'none';
+            document.getElementById('creative-indicator').style.display = player.creative ? 'block' : 'none';
+            
+            if (!player.creative) {
+                // Force close admin menu when leaving creative mode
+                document.getElementById('admin-panel').style.display = 'none';
+                if (document.getElementById('start-screen').style.display === 'none') {
+                    document.body.requestPointerLock();
+                }
+            }
+        }
+        
+        if(e.code === 'KeyM' && player.creative) {
+            const adminPanel = document.getElementById('admin-panel');
+            if (adminPanel.style.display === 'block') {
+                adminPanel.style.display = 'none';
+                document.body.requestPointerLock();
+            } else {
+                adminPanel.style.display = 'block';
+                document.exitPointerLock();
+            }
+        }
+    });
+    document.addEventListener('keyup', (e) => { if(keys.hasOwnProperty(e.code)) keys[e.code] = false; });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === document.body) {
+            yawObject.rotation.y -= e.movementX * 0.002;
+            pitchObject.rotation.x -= e.movementY * 0.002;
+            pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
+        }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+        // Hide Admin panel if user clicks back into the game
+        if (document.pointerLockElement === document.body) {
+            document.getElementById('admin-panel').style.display = 'none';
+        }
+    });
+
+    document.getElementById('start-btn').addEventListener('click', startGame);
+    setupAdminEvents();
+}
+
+function initAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const bufferSize = audioCtx.sampleRate * 2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    
+    const noiseSource = audioCtx.createBufferSource();
+    noiseSource.buffer = buffer;
+    noiseSource.loop = true;
+    
+    windNode = audioCtx.createBiquadFilter();
+    windNode.type = 'lowpass';
+    windNode.frequency.value = 300; 
+    
+    windGain = audioCtx.createGain();
+    windGain.gain.value = 0.1; 
+    
+    noiseSource.connect(windNode);
+    windNode.connect(windGain);
+    windGain.connect(audioCtx.destination);
+    noiseSource.start();
+}
+
+function startGame() {
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('ui-layer').style.display = 'flex';
+    document.body.requestPointerLock();
+    if(!audioCtx) initAudio();
+    if(audioCtx.state === 'suspended') audioCtx.resume();
+    animate();
+}
+
+// ==========================================
+// ADMIN CONTROLS
+// ==========================================
+function setupAdminEvents() {
+    const adminCanvas = document.getElementById('admin-map');
+    
+    adminCanvas.addEventListener('mousedown', (e) => {
+        const rect = adminCanvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        
+        // Extended map bounds: 30000x30000
+        const worldX = (clickX / 400) * 30000 - 15000;
+        const worldZ = (clickY / 400) * 30000 - 15000;
+        
+        const tool = document.querySelector('input[name="admin-tool"]:checked').value;
+        
+        if (tool === 'select') {
+            selectedEntity = null;
+            selectedType = null;
+            let minDist = Infinity;
+            
+            storms.forEach(s => {
+                const d = Math.hypot(s.pos.x - worldX, s.pos.z - worldZ);
+                if(d < 2000 && d < minDist) { minDist = d; selectedEntity = s; selectedType = 'Storm'; }
+            });
+            worms.forEach(w => {
+                const d = Math.hypot(w.segments[0].position.x - worldX, w.segments[0].position.z - worldZ);
+                if(d < 1000 && d < minDist) { minDist = d; selectedEntity = w; selectedType = 'Worm'; }
+            });
+            spiceNodes.forEach(sp => {
+                const d = Math.hypot(sp.mesh.position.x - worldX, sp.mesh.position.z - worldZ);
+                if(d < 600 && d < minDist) { minDist = d; selectedEntity = sp; selectedType = 'Spice'; }
+            });
+            
+            document.getElementById('sel-type').innerText = selectedType || 'None';
+        } else if (tool === 'worm') {
+            spawnWorm(worldX, worldZ);
+        } else if (tool === 'storm') {
+            spawnStorm(worldX, worldZ, 0, 0); // Aim at center by default
+        } else if (tool === 'spice') {
+            spawnSpice(worldX, worldZ);
+        }
+    });
+
+    document.getElementById('btn-rotate').addEventListener('click', () => {
+        if (!selectedEntity) return;
+        const axis = new THREE.Vector3(0, 1, 0);
+        if (selectedType === 'Storm') {
+            selectedEntity.vel.applyAxisAngle(axis, Math.PI / 4); // Rotate 45 deg
+            selectedEntity.mesh.lookAt(selectedEntity.pos.clone().add(selectedEntity.vel));
+        } else if (selectedType === 'Worm') {
+            const dir = new THREE.Vector3().subVectors(selectedEntity.target, selectedEntity.segments[0].position);
+            dir.applyAxisAngle(axis, Math.PI / 4);
+            selectedEntity.target.copy(selectedEntity.segments[0].position).add(dir);
+        }
+    });
+
+    document.getElementById('btn-despawn').addEventListener('click', () => {
+        if (!selectedEntity) return;
+        if (selectedType === 'Storm') {
+            scene.remove(selectedEntity.mesh);
+            storms.splice(storms.indexOf(selectedEntity), 1);
+        } else if (selectedType === 'Worm') {
+            selectedEntity.segments.forEach(seg => scene.remove(seg));
+            worms.splice(worms.indexOf(selectedEntity), 1);
+        } else if (selectedType === 'Spice') {
+            scene.remove(selectedEntity.mesh);
+            spiceNodes.splice(spiceNodes.indexOf(selectedEntity), 1);
+        }
+        selectedEntity = null;
+        selectedType = null;
+        document.getElementById('sel-type').innerText = 'None';
+    });
+}
+
+// ==========================================
+// WORLD GENERATION & SPAWNING
+// ==========================================
+function getElevation(x, z) {
+    let y = 0;
+    y += simplex.noise2D(x * 0.0005, z * 0.0005) * 150; 
+    y += simplex.noise2D(x * 0.002, z * 0.002) * 40;   
+    y += simplex.noise2D(x * 0.01, z * 0.01) * 5;      
+    if (y < -30) y = -30 + (y + 30) * 0.1; 
+    return y;
+}
+
+function buildTerrain() {
+    const geometry = new THREE.PlaneGeometry(env.worldSize, env.worldSize, 250, 250);
+    geometry.rotateX(-Math.PI / 2);
+    
+    const positions = geometry.attributes.position;
+    const colors = [];
+    const colorObj = new THREE.Color();
+    
+    for (let i = 0; i < positions.count; i++) {
+        const x = positions.getX(i);
+        const z = positions.getZ(i);
+        const y = getElevation(x, z);
+        positions.setY(i, y);
+        
+        if (y < -28) colorObj.setHex(0x332211); // Deep Oasis bed
+        else if (y > 70) colorObj.setHex(0x8b7355); // Rocky peaks
+        else {
+            const variation = simplex.noise2D(x * 0.05, z * 0.05) * 0.05;
+            colorObj.setHSL(0.1, 0.4, 0.6 + variation); 
+        }
+        colors.push(colorObj.r, colorObj.g, colorObj.b);
+    }
+    
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geometry.computeVertexNormals();
+    
+    const material = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.9, metalness: 0.0, flatShading: true
+    });
+    
+    terrainMesh = new THREE.Mesh(geometry, material);
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+}
+
+function spawnSpice(x, z) {
+    const y = getElevation(x, z);
+    if (y > -20 && y < 60) {
+        const mesh = new THREE.Mesh(spiceGeo, spiceMat);
+        mesh.position.set(x, y + 2, z);
+        mesh.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, 0);
+        mesh.castShadow = true;
+        scene.add(mesh);
+        spiceNodes.push({ mesh, baseY: y + 2, vx: 0, vy: 0, vz: 0, flying: false });
+    }
+}
+
+function spawnWorm(x, z) {
+    const numSegments = 18;
+    const worm = {
+        segments: [],
+        target: new THREE.Vector3(x + (Math.random()-0.5)*1000, 0, z + (Math.random()-0.5)*1000),
+        state: 'patrol',
+        anger: 0
+    };
+
+    for (let i = 0; i < numSegments; i++) {
+        const mesh = new THREE.Mesh(i === 0 ? wormHeadGeo : wormSegmentGeo, wormMat);
+        const scale = 1 - (i / (numSegments + 5));
+        mesh.scale.set(scale, scale, scale);
+        mesh.position.set(x, -100, z); // Start underground
+        scene.add(mesh);
+        worm.segments.push(mesh);
+    }
+    worms.push(worm);
+}
+
+function spawnStorm(startX, startZ, targetX, targetZ) {
+    const stormGeo = new THREE.SphereGeometry(1, 32, 16);
+    const stormMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, transparent: true, opacity: 0.8, depthWrite: false });
+    const mesh = new THREE.Mesh(stormGeo, stormMat);
+    mesh.scale.set(15000, 2000, 1500); 
+    mesh.position.set(startX, 500, startZ);
+    mesh.lookAt(targetX, 500, targetZ); 
+    scene.add(mesh);
+    
+    const vel = new THREE.Vector3(targetX - startX, 0, targetZ - startZ);
+    if (vel.lengthSq() > 0) vel.normalize().multiplyScalar(150);
+    else vel.set(150, 0, 0); // fallback
+    
+    storms.push({ mesh, pos: new THREE.Vector3(startX, 0, startZ), vel, active: true });
+}
+
+function populateResources() {
+    for (let i = 0; i < 300; i++) {
+        spawnSpice((Math.random() - 0.5) * env.worldSize * 0.9, (Math.random() - 0.5) * env.worldSize * 0.9);
+    }
+
+    const waterGeo = new THREE.PlaneGeometry(30, 30);
+    const waterMat = new THREE.MeshStandardMaterial({ color: 0x3388ff, transparent: true, opacity: 0.8, roughness: 0.1 });
+    waterGeo.rotateX(-Math.PI / 2);
+
+    for (let i = 0; i < 150; i++) {
+        const x = (Math.random() - 0.5) * env.worldSize;
+        const z = (Math.random() - 0.5) * env.worldSize;
+        const y = getElevation(x, z);
+        
+        if (y < -28) {
+            const mesh = new THREE.Mesh(waterGeo, waterMat);
+            mesh.position.set(x, y + 0.5, z);
+            mesh.rotation.y = Math.random() * Math.PI;
+            scene.add(mesh);
+            oasisNodes.push(mesh);
+            
+            const plantGeo = new THREE.BoxGeometry(2, 15, 2);
+            const plantMat = new THREE.MeshStandardMaterial({color: 0x228b22});
+            for(let p=0; p<3; p++){
+                const px = x + (Math.random()-0.5)*20;
+                const pz = z + (Math.random()-0.5)*20;
+                const py = getElevation(px, pz);
+                const pMesh = new THREE.Mesh(plantGeo, plantMat);
+                pMesh.position.set(px, py + 7.5, pz);
+                pMesh.castShadow = true;
+                scene.add(pMesh);
+            }
+        }
+    }
+}
+
+function generateMapBackground() {
+    mapBgCanvas = document.createElement('canvas');
+    mapBgCanvas.width = 400;
+    mapBgCanvas.height = 400;
+    mapBgCtx = mapBgCanvas.getContext('2d');
+    
+    const size = 400;
+    for(let x = 0; x < size; x += 2) {
+        for(let y = 0; y < size; y += 2) {
+            const worldX = (x / size) * 30000 - 15000;
+            const worldZ = (y / size) * 30000 - 15000;
+            const el = getElevation(worldX, worldZ);
+            
+            if (worldX < -7500 || worldX > 7500 || worldZ < -7500 || worldZ > 7500) {
+                mapBgCtx.fillStyle = '#222'; // Out of bounds
+            } else {
+                if (el < -28) mapBgCtx.fillStyle = '#3388ff';
+                else if (el > 70) mapBgCtx.fillStyle = '#8b7355'; 
+                else mapBgCtx.fillStyle = '#d2b48c'; 
+            }
+            mapBgCtx.fillRect(x, y, 2, 2);
+        }
+    }
+}
+
+// ==========================================
+// ENVIRONMENT & EFFECTS
+// ==========================================
+function setupLighting() {
+    ambientLight = new THREE.AmbientLight(0x404040, 0.6); 
+    scene.add(ambientLight);
+
+    sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    sunLight.position.set(1000, 1500, 1000); // Fixed Daytime Angle
+    sunLight.castShadow = true;
+    sunLight.shadow.camera.left = -500;
+    sunLight.shadow.camera.right = 500;
+    sunLight.shadow.camera.top = 500;
+    sunLight.shadow.camera.bottom = -500;
+    sunLight.shadow.camera.far = 3500;
+    sunLight.shadow.bias = -0.001;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    scene.add(sunLight);
+}
+
+function setupParticles() {
+    const particleCount = 3000;
+    particleGeo = new THREE.BufferGeometry();
+    const posArray = new Float32Array(particleCount * 3);
+    for(let i=0; i<particleCount*3; i++) posArray[i] = (Math.random() - 0.5) * 400; 
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+    const particleMat = new THREE.PointsMaterial({
+        color: 0xd2b48c, size: 2, transparent: true, opacity: 0.0, depthWrite: false
+    });
+    particleSystem = new THREE.Points(particleGeo, particleMat);
+    particleSystem.visible = false;
+    scene.add(particleSystem);
+
+    wormDustGeo = new THREE.BufferGeometry();
+    wormDustPos = new Float32Array(wormDustCount * 3);
+    wormDustLife = new Float32Array(wormDustCount);
+    wormDustGeo.setAttribute('position', new THREE.BufferAttribute(wormDustPos, 3));
+    const wormDustMat = new THREE.PointsMaterial({
+        color: 0x8b7355, size: 30, transparent: true, opacity: 0.5, depthWrite: false
+    });
+    wormDustSystem = new THREE.Points(wormDustGeo, wormDustMat);
+    scene.add(wormDustSystem);
+}
+
+function updateEnvironment(delta) {
+    // Dynamic Storm Spawning
+    env.stormCheckTimer -= delta;
+    if (env.stormCheckTimer <= 0) {
+        env.stormCheckTimer = 1.0; // Check once every second
+        
+        // Only spawn naturally if no storms exist and 1/200 chance hits
+        if (storms.length === 0 && Math.random() < 0.005) {
+            const angle = Math.random() * Math.PI * 2;
+            const spawnDist = (env.worldSize / 2) + 6000; // Spawn outside boundaries
+            const startX = Math.cos(angle) * spawnDist;
+            const startZ = Math.sin(angle) * spawnDist;
+            
+            const targetX = (Math.random() - 0.5) * env.worldSize;
+            const targetZ = (Math.random() - 0.5) * env.worldSize;
+            
+            spawnStorm(startX, startZ, targetX, targetZ);
+        }
+    }
+
+    // Dynamic Spice Spawning/Despawning
+    env.spiceTimer -= delta;
+    if (env.spiceTimer <= 0) {
+        env.spiceTimer = 1.0;
+        if (spiceNodes.length < 350 && Math.random() < 0.3) {
+            spawnSpice((Math.random() - 0.5) * env.worldSize * 0.9, (Math.random() - 0.5) * env.worldSize * 0.9);
+        }
+        if (spiceNodes.length > 200 && Math.random() < 0.15) {
+            const idx = Math.floor(Math.random() * spiceNodes.length);
+            scene.remove(spiceNodes[idx].mesh);
+            spiceNodes.splice(idx, 1);
+        }
+    }
+
+    // Process all active storms
+    env.sandstormIntensity = 0;
+    let sDirX = -1, sDirZ = 0;
+
+    storms.forEach((storm, index) => {
+        storm.pos.addScaledVector(storm.vel, delta);
+        storm.mesh.position.set(storm.pos.x, 500, storm.pos.z);
+
+        const distFromCenter = storm.pos.length();
+        const dot = storm.pos.x * storm.vel.x + storm.pos.z * storm.vel.z;
+        if (distFromCenter > (env.worldSize / 2) + 8000 && dot > 0) {
+            scene.remove(storm.mesh);
+            storm.dead = true; // Mark for cleanup
+        }
+
+        const localPos = storm.mesh.worldToLocal(yawObject.position.clone());
+        const distInside = localPos.length();
+        if (distInside <= 1.0) {
+            const intensity = Math.min(1, (1.0 - distInside) * 5);
+            if (intensity > env.sandstormIntensity) {
+                env.sandstormIntensity = intensity;
+                sDirX = storm.vel.x;
+                sDirZ = storm.vel.z;
+            }
+        }
+    });
+    storms = storms.filter(s => !s.dead);
+
+    // Render Fog and Colors (Static Day + Storm overlay)
+    const targetFogColor = env.sandstormIntensity > 0.5 ? new THREE.Color(0x8B5A2B) : new THREE.Color(0xe6c280);
+    const targetBgColor = env.sandstormIntensity > 0.5 ? new THREE.Color(0x8B5A2B) : new THREE.Color(0x87CEEB);
+    scene.fog.color.lerp(targetFogColor, 0.05);
+    scene.background.lerp(targetBgColor, 0.05);
+    scene.fog.density = 0.0002 + (env.sandstormIntensity * 0.005);
+
+    // Update Particles
+    if (env.sandstormIntensity > 0) {
+        particleSystem.visible = true;
+        particleSystem.material.opacity = env.sandstormIntensity * 0.8;
+        particleSystem.position.copy(yawObject.position);
+        
+        const len = Math.hypot(sDirX, sDirZ);
+        if(len > 0) { sDirX /= len; sDirZ /= len; }
+        
+        const positions = particleGeo.attributes.position.array;
+        for(let i=0; i<positions.length; i+=3) {
+            positions[i] += sDirX * 300 * delta * env.sandstormIntensity;
+            positions[i+1] -= 50 * delta * env.sandstormIntensity;
+            positions[i+2] += sDirZ * 300 * delta * env.sandstormIntensity;
+            
+            if(positions[i] < -200) positions[i] += 400; else if(positions[i] > 200) positions[i] -= 400;
+            if(positions[i+1] < -200) positions[i+1] += 400; else if(positions[i+1] > 200) positions[i+1] -= 400;
+            if(positions[i+2] < -200) positions[i+2] += 400; else if(positions[i+2] > 200) positions[i+2] -= 400;
+        }
+        particleGeo.attributes.position.needsUpdate = true;
+    } else {
+        particleSystem.visible = false;
+    }
+
+    if (audioCtx) {
+        windNode.frequency.value = 300 + (env.sandstormIntensity * 1200);
+        windGain.gain.value = 0.05 + (env.sandstormIntensity * 0.3) + (player.moving ? 0.05 : 0);
+    }
+}
+
+function updateWorms(delta) {
+    const playerPos = yawObject.position;
+    const playerElevation = getElevation(playerPos.x, playerPos.z);
+    const onSand = playerElevation > -20 && playerElevation < 60; 
+    const makingNoise = player.moving && player.onGround && !player.creative;
+
+    if (onSand && makingNoise) player.noiseTime += delta; else player.noiseTime = 0;
+
+    const aggroRadius = env.worldSize / 4;
+
+    worms.forEach(worm => {
+        const head = worm.segments[0];
+        const distToPlayer = head.position.distanceTo(playerPos);
+
+        if (onSand && makingNoise && distToPlayer < 5000) worm.anger += delta * 5.0; 
+        else worm.anger -= delta * 4; 
+
+        if (player.noiseTime >= 3.0 && distToPlayer <= aggroRadius) worm.anger = 100;
+        if (!player.creative && distToPlayer < 800) worm.anger = 100;
+
+        worm.anger = Math.max(0, Math.min(100, worm.anger));
+
+        let speed = 40;
+        let targetYOffset = 20; 
+
+        if (worm.anger > 70) {
+            worm.state = 'hunt';
+            worm.target.copy(playerPos);
+            speed = 180 + (worm.anger * 0.8); 
+            targetYOffset = 40; 
+        } else {
+            worm.state = 'patrol';
+            if (head.position.distanceTo(worm.target) < 50) {
+                const limit = (env.worldSize / 2) - 200; // Keep slightly inside bounds
+                
+                // If wandering out of bounds, steer back towards the center
+                if (Math.abs(head.position.x) > limit || Math.abs(head.position.z) > limit) {
+                    worm.target.set(0, 0, 0);
+                } else {
+                    let newX = head.position.x + (Math.random() - 0.5)*1000;
+                    let newZ = head.position.z + (Math.random() - 0.5)*1000;
+                    // Clamp random patrol points to map boundaries
+                    newX = Math.max(-limit, Math.min(limit, newX));
+                    newZ = Math.max(-limit, Math.min(limit, newZ));
+                    worm.target.set(newX, 0, newZ);
+                }
+            }
+        }
+
+        if (worm.state === 'hunt' && distToPlayer < 450) worm.state = 'breach';
+
+        if (worm.state === 'breach') {
+            speed = 300;
+            targetYOffset = 100; 
+            if (distToPlayer < 250 && playerPos.y - getElevation(playerPos.x, playerPos.z) < 80) {
+                takeDamage(50);
+                worm.anger = 0; 
+                yawObject.position.y += 10;
+                yawObject.position.x += (Math.random() - 0.5) * 10;
+            }
+        }
+
+        worm.target.y = getElevation(worm.target.x, worm.target.z) + targetYOffset;
+        
+        const dir = new THREE.Vector3().subVectors(worm.target, head.position).normalize();
+        if(dir.lengthSq() > 0) {
+            head.position.add(dir.multiplyScalar(speed * delta));
+            head.lookAt(worm.target);
+            
+            if (speed > 80) {
+                for(let p=0; p<3; p++) {
+                    wormDustPos[wormDustIndex*3] = head.position.x + (Math.random()-0.5)*100;
+                    wormDustPos[wormDustIndex*3+1] = head.position.y - 20;
+                    wormDustPos[wormDustIndex*3+2] = head.position.z + (Math.random()-0.5)*100;
+                    wormDustLife[wormDustIndex] = 1.0;
+                    wormDustIndex = (wormDustIndex + 1) % wormDustCount;
+                }
+            }
+        }
+
+        for (let i = 1; i < worm.segments.length; i++) {
+            const current = worm.segments[i];
+            const prev = worm.segments[i-1];
+            const idealDist = 36 * current.scale.x;
+            const dist = current.position.distanceTo(prev.position);
+            if (dist > idealDist) {
+                const moveDir = new THREE.Vector3().subVectors(prev.position, current.position).normalize();
+                current.position.add(moveDir.multiplyScalar((dist - idealDist) * 10 * delta));
+                current.lookAt(prev.position);
+            }
+        }
+    });
+
+    for(let i=0; i<wormDustCount; i++) {
+        if(wormDustLife[i] > 0) {
+            wormDustLife[i] -= delta * 0.5; 
+            wormDustPos[i*3+1] += delta * 60; 
+        } else {
+            wormDustPos[i*3+1] = -9999; 
+        }
+    }
+    wormDustGeo.attributes.position.needsUpdate = true;
+}
+
+// ==========================================
+// PLAYER LOGIC & GAME LOOP
+// ==========================================
+function takeDamage(amount) {
+    if(player.creative) return; 
+    player.health -= amount;
+    damageOverlay.style.opacity = 1;
+    setTimeout(() => { damageOverlay.style.opacity = 0; }, 300);
+    
+    if (player.health <= 0) {
+        document.exitPointerLock();
+        document.getElementById('start-screen').style.display = 'flex';
+        document.querySelector('#start-screen h1').innerText = "YOU DIED";
+        document.getElementById('ui-layer').style.display = 'none';
+        
+        player.health = 100;
+        player.thirst = 100;
+        player.canteen = 0;
+        player.spice = 0;
+        
+        yawObject.position.set((Math.random() - 0.5) * (env.worldSize * 0.8), 200, (Math.random() - 0.5) * (env.worldSize * 0.8));
+        
+        storms.forEach(s => scene.remove(s.mesh));
+        storms = [];
+        env.sandstormIntensity = 0;
+        worms.forEach(w => w.anger = 0);
+    }
+}
+
+function updatePlayer(delta) {
+    player.velocity.x -= player.velocity.x * 10.0 * delta;
+    player.velocity.z -= player.velocity.z * 10.0 * delta;
+    
+    if (!player.creative) {
+        player.velocity.y -= 9.8 * 40.0 * delta; 
+    } else {
+        player.velocity.y -= player.velocity.y * 10.0 * delta; 
+        if (keys.Space) player.velocity.y += player.speed * 10 * delta;
+        if (keys.ShiftLeft) player.velocity.y -= player.speed * 10 * delta;
+    }
+
+    player.direction.z = Number(keys.KeyW) - Number(keys.KeyS);
+    player.direction.x = Number(keys.KeyD) - Number(keys.KeyA);
+    player.direction.normalize();
+    player.moving = player.direction.lengthSq() > 0;
+
+    let currentSpeed = player.creative ? player.speed * 8 : player.speed;
+    if (!player.creative && env.sandstormIntensity > 0.5) currentSpeed *= 0.6;
+
+    if (player.direction.z !== 0) player.velocity.z -= player.direction.z * currentSpeed * delta;
+    if (player.direction.x !== 0) player.velocity.x -= player.direction.x * currentSpeed * delta;
+
+    yawObject.translateX(-player.velocity.x * delta);
+    yawObject.translateZ(player.velocity.z * delta);
+    yawObject.position.y += player.velocity.y * delta;
+
+    const terrainHeight = getElevation(yawObject.position.x, yawObject.position.z);
+    
+    if (!player.creative && yawObject.position.y < terrainHeight + player.height) {
+        player.velocity.y = 0;
+        yawObject.position.y = terrainHeight + player.height;
+        player.onGround = true;
+    } else if (!player.creative) {
+        player.onGround = false;
+    }
+
+    if (!player.creative && keys.Space && player.onGround) {
+        player.velocity.y = player.jumpForce;
+        player.onGround = false;
+    }
+
+    const limit = env.worldSize / 2 - 50;
+    if (yawObject.position.x > limit) yawObject.position.x = limit;
+    if (yawObject.position.x < -limit) yawObject.position.x = -limit;
+    if (yawObject.position.z > limit) yawObject.position.z = limit;
+    if (yawObject.position.z < -limit) yawObject.position.z = -limit;
+
+    // Spice Movement and Collection
+    for (let i = spiceNodes.length - 1; i >= 0; i--) {
+        const spice = spiceNodes[i];
+        
+        let inStorm = false;
+        let sDirX = 0, sDirZ = 0;
+        
+        storms.forEach(storm => {
+            const localPos = storm.mesh.worldToLocal(spice.mesh.position.clone());
+            if (localPos.length() <= 1.0) {
+                inStorm = true;
+                const len = storm.vel.length();
+                if(len > 0) { sDirX = storm.vel.x/len; sDirZ = storm.vel.z/len; }
+            }
+        });
+
+        if (inStorm) {
+            spice.vx += sDirX * delta * 250;
+            spice.vz += sDirZ * delta * 250;
+            if (!spice.flying) {
+                spice.flying = true;
+                spice.vy = 80 + Math.random() * 80; // Fly upwards dynamically
+            }
+        }
+
+        if (spice.flying) {
+            spice.vy -= 120 * delta; // Gravity
+            spice.mesh.position.y += spice.vy * delta;
+            spice.mesh.position.x += spice.vx * delta;
+            spice.mesh.position.z += spice.vz * delta;
+            
+            spice.vx *= 0.95; // Air friction
+            spice.vz *= 0.95;
+            
+            const floorY = getElevation(spice.mesh.position.x, spice.mesh.position.z) + 2;
+            if (spice.mesh.position.y <= floorY) {
+                spice.mesh.position.y = floorY;
+                spice.vy = 0;
+                spice.flying = false;
+                spice.baseY = floorY;
+            }
+        } else {
+            spice.mesh.rotation.y += delta;
+            spice.mesh.position.y = spice.baseY + Math.sin(clock.elapsedTime * 2 + spice.mesh.id) * 0.5;
+        }
+
+        // Collection
+        if (yawObject.position.distanceTo(spice.mesh.position) < 20) {
+            scene.remove(spice.mesh);
+            spiceNodes.splice(i, 1);
+            player.spice += 1;
+            player.health = Math.min(100, player.health + 5); // HEAL FROM SPICE
+            uiSpice.innerText = player.spice;
+            uiSpice.style.transform = "scale(1.5)";
+            setTimeout(() => { uiSpice.style.transform = "scale(1)"; }, 200);
+        }
+    }
+
+    player.inOasis = false;
+    for (let i = 0; i < oasisNodes.length; i++) {
+        if (yawObject.position.distanceTo(oasisNodes[i].position) < 20) {
+            player.inOasis = true;
+            if (player.thirst < 100) player.thirst += 20 * delta; 
+            else if (player.canteen < player.canteenMax) player.canteen += 20 * delta; 
+            if (player.health < 100) player.health += 10 * delta; 
+            break;
+        }
+    }
+
+    let thirstDrain = 0.3;
+    if (env.sandstormIntensity > 0.1) thirstDrain *= 2; 
+    if (player.moving) thirstDrain *= 1.5;
+
+    if (!player.creative) {
+        if (!player.inOasis) {
+            if (player.canteen > 0) player.canteen -= thirstDrain * delta; 
+            else player.thirst -= thirstDrain * delta; 
+        }
+
+        if (player.thirst <= 0) {
+            player.thirst = 0;
+            takeDamage(5 * delta); 
+        }
+
+        if (env.sandstormIntensity > 0.8) {
+            takeDamage(2 * delta);
+        }
+    }
+
+    player.health = Math.max(0, Math.min(100, player.health));
+    player.thirst = Math.max(0, Math.min(100, player.thirst));
+    player.canteen = Math.max(0, Math.min(player.canteenMax, player.canteen));
+
+    uiHealth.style.width = player.health + '%';
+    uiThirst.style.width = player.thirst + '%';
+    uiCanteen.style.width = (player.canteen / player.canteenMax * 100) + '%';
+}
+
+function drawAdminMap() {
+    const mapCanvas = document.getElementById('admin-map');
+    const ctx = mapCanvas.getContext('2d');
+    const size = 400;
+    
+    if (mapBgCanvas) ctx.drawImage(mapBgCanvas, 0, 0);
+    else ctx.clearRect(0, 0, size, size);
+
+    // Map 30000x30000 World to 400x400 Canvas
+    const mapCoord = (val) => ((val + 15000) / 30000) * size;
+
+    // Draw Map Bounds box
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, size, size);
+
+    // Draw Storms
+    storms.forEach(storm => {
+        ctx.save();
+        ctx.translate(mapCoord(storm.pos.x), mapCoord(storm.pos.z));
+        const angle = Math.atan2(storm.vel.z, storm.vel.x);
+        ctx.rotate(angle);
+        
+        ctx.fillStyle = (storm === selectedEntity) ? 'rgba(0, 255, 0, 0.8)' : 'rgba(107, 74, 43, 0.8)';
+        ctx.fillRect(-20, -200, 40, 400); // Scaled representation of the storm front
+        
+        // Draw direction line
+        ctx.strokeStyle = '#fff';
+        ctx.beginPath();
+        ctx.moveTo(0,0);
+        ctx.lineTo(30, 0);
+        ctx.stroke();
+        
+        ctx.restore();
+    });
+
+    // Draw Worms
+    worms.forEach(w => {
+        ctx.fillStyle = (w === selectedEntity) ? '#00ff00' : '#ff3333';
+        ctx.beginPath();
+        ctx.arc(mapCoord(w.segments[0].position.x), mapCoord(w.segments[0].position.z), 6, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    // Draw Spice
+    spiceNodes.forEach(sp => {
+        if (sp === selectedEntity) {
+            ctx.fillStyle = '#00ff00';
+            ctx.beginPath();
+            ctx.arc(mapCoord(sp.mesh.position.x), mapCoord(sp.mesh.position.z), 4, 0, Math.PI*2);
+            ctx.fill();
+        } else {
+            ctx.fillStyle = '#fca311';
+            ctx.fillRect(mapCoord(sp.mesh.position.x)-1, mapCoord(sp.mesh.position.z)-1, 2, 2);
+        }
+    });
+
+    // Draw Player
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(mapCoord(yawObject.position.x), mapCoord(yawObject.position.z), 4, 0, Math.PI*2);
+    ctx.fill();
+    
+    // Player viewing direction
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(mapCoord(yawObject.position.x), mapCoord(yawObject.position.z));
+    const viewDir = new THREE.Vector3(0, 0, -1).applyQuaternion(yawObject.quaternion);
+    ctx.lineTo(mapCoord(yawObject.position.x + viewDir.x * 1500), mapCoord(yawObject.position.z + viewDir.z * 1500));
+    ctx.stroke();
+}
+
+function drawSmallMap() {
+    const mapCanvas = document.getElementById('world-map');
+    const ctx = mapCanvas.getContext('2d');
+    const size = 300;
+    ctx.clearRect(0, 0, size, size);
+
+    // Map 15000x15000 World to 300x300 Canvas
+    const mapCoord = (val) => ((val + 7500) / 15000) * size;
+    ctx.strokeStyle = '#555';
+    ctx.strokeRect(0, 0, size, size);
+
+    worms.forEach(w => {
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.arc(mapCoord(w.segments[0].position.x), mapCoord(w.segments[0].position.z), 4, 0, Math.PI*2);
+        ctx.fill();
+    });
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(mapCoord(yawObject.position.x), mapCoord(yawObject.position.z), 4, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = Math.min(clock.getDelta(), 0.1); 
+
+    if (document.pointerLockElement === document.body) {
+        updatePlayer(delta);
+        updateEnvironment(delta);
+        updateWorms(delta);
+        if (player.creative) drawSmallMap();
+    } else if (player.creative && document.getElementById('admin-panel').style.display === 'block') {
+        // Allow environment to keep running in Admin mode
+        updateEnvironment(delta);
+        updateWorms(delta);
+        drawAdminMap();
+    }
+
+    renderer.render(scene, camera);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+init();
+
+</script>
+</body>
+</html>

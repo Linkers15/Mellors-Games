@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atmos Survival 3D</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: system-ui, sans-serif; user-select: none; }
+        #game-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 6px; height: 6px; background: rgba(255,255,255,0.9); border-radius: 50%; pointer-events: none; mix-blend-mode: difference; }
+        
+        #pause-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 20; display: flex; flex-direction: column; justify-content: center; align-items: center; display: none; }
+        
+        /* Command Menu Overlay */
+        #command-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); z-index: 30; flex-direction: column; justify-content: center; align-items: center; display: none; }
+
+        /* Lightning Flash Overlay */
+        #flash-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 5; transition: opacity 0.1s ease-out; }
+
+        /* Survival HUD Elements */
+        .hotbar-slot { padding: 6px 12px; border-radius: 6px; background: rgba(30, 41, 59, 0.9); border: 2px solid transparent; transition: all 0.2s; }
+        .hotbar-slot.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.2); transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <canvas id="game-canvas"></canvas>
+    <div id="flash-overlay"></div>
+
+    <!-- Heads Up Display -->
+    <div id="hud">
+        <div class="crosshair"></div>
+        
+        <!-- Environment Stats -->
+        <div class="absolute top-4 left-4 bg-slate-900/80 p-4 rounded-lg border border-slate-700 backdrop-blur text-white min-w-[200px]">
+            <h2 class="font-bold text-blue-400 mb-2 border-b border-slate-600 pb-1">Local Conditions</h2>
+            <div class="text-sm space-y-1">
+                <div>Biome: <span id="hud-biome" class="text-green-300 font-semibold capitalize">Plains</span></div>
+                <div>Temp: <span id="hud-temp" class="font-mono">72.0°F</span></div>
+                <div>Weather: <span id="hud-weather" class="text-blue-300">Clear</span></div>
+            </div>
+            <div class="mt-3 text-xs text-slate-400">Press ESC to pause/options</div>
+        </div>
+        
+        <!-- Survival Health Bar -->
+        <div class="absolute top-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center gap-2">
+            <div class="w-64 bg-slate-900 border-2 border-slate-700 rounded-full h-6 overflow-hidden shadow-lg shadow-black/50">
+                <div id="hud-health" class="bg-red-500 h-full w-full transition-all" style="width: 100%;"></div>
+            </div>
+            <div id="hud-status" class="text-sm font-bold text-yellow-300 drop-shadow-md tracking-wide"></div>
+        </div>
+        
+        <!-- Mode indicator -->
+        <div class="absolute top-4 right-4 bg-slate-900/80 p-3 rounded-lg border border-slate-700 backdrop-blur text-white text-xs text-right">
+            <div>Mode: <span id="hud-mode" class="text-yellow-400 font-bold">Survival</span></div>
+            <div id="hud-cmd-hint" class="text-slate-400 mt-1 hidden">Press / for Commands</div>
+        </div>
+
+        <!-- Hotbar & Inventory -->
+        <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-3 bg-slate-900/90 p-3 rounded-xl border border-slate-700 text-white font-bold text-sm shadow-2xl backdrop-blur">
+            <div id="slot-1" class="hotbar-slot">[1] Boat (8w)</div>
+            <div id="slot-2" class="hotbar-slot">[2] Jacket (4w)</div>
+            <div id="slot-3" class="hotbar-slot">[3] Wall (12w)</div>
+            <div id="slot-4" class="hotbar-slot">[4] Floor (12w)</div>
+            <div class="hotbar-slot !bg-amber-900/50 !border-amber-700/50 flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
+                Wood: <span id="hud-wood" class="text-amber-400">0</span>
+            </div>
+        </div>
+        <!-- Tooltip hint -->
+        <div id="build-hint" class="absolute bottom-24 left-1/2 transform -translate-x-1/2 text-white/70 text-xs font-bold bg-black/50 px-3 py-1 rounded hidden">
+            Left Click to Build | Q to Cancel
+        </div>
+    </div>
+
+    <!-- Pause / Debug Menu -->
+    <div id="pause-menu">
+        <h1 class="text-3xl font-bold text-blue-400 mb-6 text-center shadow-black drop-shadow-md">Pause & Simulator Debug</h1>
+        
+        <div class="flex gap-8 bg-slate-900 p-8 rounded-xl border border-slate-700 shadow-2xl text-white relative">
+            <!-- Left: 2D Debug Map -->
+            <div class="flex flex-col gap-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-300 font-bold text-sm">Live Weather Map</span>
+                    <div class="flex gap-2">
+                        <button id="btn-map-weather" class="px-2 py-1 bg-blue-600 rounded text-[10px] font-bold text-white transition">Weather</button>
+                        <button id="btn-map-temp" class="px-2 py-1 bg-slate-700 rounded text-[10px] font-bold text-slate-300 transition">Temp</button>
+                    </div>
+                </div>
+                <div class="relative w-[300px] h-[300px]">
+                    <canvas id="debug-map" width="151" height="151" class="absolute top-0 left-0 w-full h-full border border-slate-700 rounded bg-black [image-rendering:pixelated] shadow-inner"></canvas>
+                    <canvas id="debug-overlay" width="300" height="300" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+                </div>
+            </div>
+
+            <!-- Right: Controls -->
+            <div class="space-y-6 w-64 flex flex-col justify-center border-l border-slate-800 pl-8">
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <label class="text-slate-300">Simulation Speed</label>
+                        <span id="val-speed" class="text-blue-400 font-mono">0.01x</span>
+                    </div>
+                    <input type="range" id="ctrl-speed" min="0" max="0.1" step="0.001" value="0.01" class="w-full">
+                </div>
+                
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <label class="text-slate-300">Disaster Chance</label>
+                        <span id="val-disaster" class="text-blue-400 font-mono">Normal</span>
+                    </div>
+                    <input type="range" id="ctrl-disaster" min="0" max="0.005" step="0.0001" value="0.001" class="w-full">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <label class="text-slate-300">Pressure Bias</label>
+                        <span id="val-pressure" class="text-blue-400 font-mono">0.0</span>
+                    </div>
+                    <input type="range" id="ctrl-pressure" min="-0.3" max="0.3" step="0.01" value="0" class="w-full">
+                </div>
+
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <label class="text-slate-300">Temp Bias</label>
+                        <span id="val-temp" class="text-blue-400 font-mono">0°F</span>
+                    </div>
+                    <input type="range" id="ctrl-temp" min="-40" max="40" step="1" value="0" class="w-full">
+                </div>
+                
+                <hr class="border-slate-800">
+
+                <div class="flex items-center justify-between bg-slate-800 p-3 rounded">
+                    <span class="text-sm font-semibold">Creative Mode</span>
+                    <button id="btn-creative" class="px-4 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold transition">Off</button>
+                </div>
+
+                <button id="btn-resume" class="mt-4 w-full py-3 bg-blue-600 hover:bg-blue-500 rounded text-white font-bold text-lg transition shadow-lg">Resume Game</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Command Menu Overlay -->
+    <div id="command-menu">
+        <h1 class="text-4xl font-black text-purple-400 mb-8 drop-shadow-lg tracking-wider uppercase">Creative Commands</h1>
+        
+        <div class="grid grid-cols-2 gap-8 w-full max-w-3xl text-white">
+            <!-- Summon Disasters -->
+            <div class="bg-slate-800/80 p-6 rounded-xl border border-slate-600 shadow-2xl space-y-5">
+                <h2 class="text-xl font-bold text-red-400 border-b border-slate-700 pb-2">Summon Disaster</h2>
+                
+                <select id="cmd-disaster-type" class="w-full bg-slate-900 border border-slate-600 p-3 rounded text-white font-semibold outline-none focus:border-purple-500">
+                    <option value="tornado">🌪️ Tornado</option>
+                    <option value="blizzard">❄️ Blizzard</option>
+                    <option value="heatwave">🔥 Heatwave</option>
+                </select>
+
+                <div>
+                    <label class="flex justify-between text-sm text-slate-300 mb-1 font-semibold">Intensity <span id="cmd-intensity-val" class="text-purple-400">100</span></label>
+                    <input type="range" id="cmd-intensity" min="10" max="300" value="100" class="w-full">
+                </div>
+
+                <button id="btn-summon" class="w-full py-3 bg-red-600 hover:bg-red-500 rounded font-bold transition text-lg shadow-lg">Summon at Player</button>
+            </div>
+
+            <!-- Weather Modifier -->
+            <div class="bg-slate-800/80 p-6 rounded-xl border border-slate-600 shadow-2xl space-y-5">
+                <h2 class="text-xl font-bold text-blue-400 border-b border-slate-700 pb-2">Area Weather Mod</h2>
+                
+                <div>
+                    <label class="flex justify-between text-sm text-slate-300 mb-1 font-semibold">Temp Offset (°F) <span id="cmd-temp-offset-val" class="text-blue-400">0</span></label>
+                    <input type="range" id="cmd-temp-offset" min="-100" max="100" value="0" class="w-full">
+                </div>
+
+                <div>
+                    <label class="flex justify-between text-sm text-slate-300 mb-1 font-semibold">Pressure Offset <span id="cmd-pres-offset-val" class="text-blue-400">0.00</span></label>
+                    <input type="range" id="cmd-pres-offset" min="-0.5" max="0.5" step="0.01" value="0" class="w-full">
+                </div>
+
+                <button id="btn-modify" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded font-bold transition text-lg shadow-lg">Apply to Area</button>
+            </div>
+        </div>
+        
+        <p class="mt-8 text-slate-400 font-bold bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">Press ESC or / to return to game</p>
+    </div>
+
+    <script>
+        // --- 1. PROCEDURAL NOISE ENGINE ---
+        const F2 = 0.5 * (Math.sqrt(3.0) - 1.0), G2 = (3.0 - Math.sqrt(3.0)) / 6.0;
+        const F3 = 1.0 / 3.0, G3 = 1.0 / 6.0;
+        class SimplexNoise {
+            constructor(seed = Math.random()) {
+                this.p = new Uint8Array(256);
+                for (let i = 0; i < 256; i++) this.p[i] = Math.floor(seed * 256 + i) % 256;
+                for (let i = 255; i > 0; i--) { let r = Math.floor(Math.random() * (i + 1)); let tmp = this.p[i]; this.p[i] = this.p[r]; this.p[r] = tmp; }
+                this.perm = new Uint8Array(512); this.permMod12 = new Uint8Array(512);
+                for (let i = 0; i < 512; i++) { this.perm[i] = this.p[i & 255]; this.permMod12[i] = (this.perm[i] % 12); }
+            }
+            dot2(g, x, y) { return g[0] * x + g[1] * y; }
+            dot3(g, x, y, z) { return g[0] * x + g[1] * y + g[2] * z; }
+            noise2D(xin, yin) {
+                let n0, n1, n2; let s = (xin + yin) * F2; let i = Math.floor(xin + s); let j = Math.floor(yin + s);
+                let t = (i + j) * G2; let X0 = i - t; let Y0 = j - t; let x0 = xin - X0; let y0 = yin - Y0;
+                let i1, j1; if (x0 > y0) { i1 = 1; j1 = 0; } else { i1 = 0; j1 = 1; }
+                let x1 = x0 - i1 + G2; let y1 = y0 - j1 + G2; let x2 = x0 - 1.0 + 2.0 * G2; let y2 = y0 - 1.0 + 2.0 * G2;
+                let ii = i & 255; let jj = j & 255; let gi0 = this.permMod12[ii + this.perm[jj]];
+                let gi1 = this.permMod12[ii + i1 + this.perm[jj + j1]]; let gi2 = this.permMod12[ii + 1 + this.perm[jj + 1]];
+                let t0 = 0.5 - x0 * x0 - y0 * y0; if (t0 < 0) n0 = 0.0; else { t0 *= t0; n0 = t0 * t0 * this.dot2(this.grad3[gi0], x0, y0); }
+                let t1 = 0.5 - x1 * x1 - y1 * y1; if (t1 < 0) n1 = 0.0; else { t1 *= t1; n1 = t1 * t1 * this.dot2(this.grad3[gi1], x1, y1); }
+                let t2 = 0.5 - x2 * x2 - y2 * y2; if (t2 < 0) n2 = 0.0; else { t2 *= t2; n2 = t2 * t2 * this.dot2(this.grad3[gi2], x2, y2); }
+                return 70.0 * (n0 + n1 + n2);
+            }
+            noise3D(xin, yin, zin) {
+                let n0, n1, n2, n3; let s = (xin + yin + zin) * F3; let i = Math.floor(xin + s); let j = Math.floor(yin + s); let k = Math.floor(zin + s);
+                let t = (i + j + k) * G3; let X0 = i - t, Y0 = j - t, Z0 = k - t; let x0 = xin - X0, y0 = yin - Y0, z0 = zin - Z0;
+                let i1, j1, k1, i2, j2, k2;
+                if (x0 >= y0) { if (y0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 1; k2 = 0; } else if (x0 >= z0) { i1 = 1; j1 = 0; k1 = 0; i2 = 1; j2 = 0; k2 = 1; } else { i1 = 0; j1 = 0; k1 = 1; i2 = 1; j2 = 0; k2 = 1; } } 
+                else { if (y0 < z0) { i1 = 0; j1 = 0; k1 = 1; i2 = 0; j2 = 1; k2 = 1; } else if (x0 < z0) { i1 = 0; j1 = 1; k1 = 0; i2 = 0; j2 = 1; k2 = 1; } else { i1 = 0; j1 = 1; k1 = 0; i2 = 1; j2 = 1; k2 = 0; } }
+                let x1 = x0 - i1 + G3, y1 = y0 - j1 + G3, z1 = z0 - k1 + G3;
+                let x2 = x0 - i2 + 2.0 * G3, y2 = y0 - j2 + 2.0 * G3, z2 = z0 - k2 + 2.0 * G3;
+                let x3 = x0 - 1.0 + 3.0 * G3, y3 = y0 - 1.0 + 3.0 * G3, z3 = z0 - 1.0 + 3.0 * G3;
+                let ii = i & 255, jj = j & 255, kk = k & 255;
+                let gi0 = this.permMod12[ii + this.perm[jj + this.perm[kk]]]; let gi1 = this.permMod12[ii + i1 + this.perm[jj + j1 + this.perm[kk + k1]]];
+                let gi2 = this.permMod12[ii + i2 + this.perm[jj + j2 + this.perm[kk + k2]]]; let gi3 = this.permMod12[ii + 1 + this.perm[jj + 1 + this.perm[kk + 1]]];
+                let t0 = 0.6 - x0 * x0 - y0 * y0 - z0 * z0; if (t0 < 0) n0 = 0.0; else { t0 *= t0; n0 = t0 * t0 * this.dot3(this.grad3[gi0], x0, y0, z0); }
+                let t1 = 0.6 - x1 * x1 - y1 * y1 - z1 * z1; if (t1 < 0) n1 = 0.0; else { t1 *= t1; n1 = t1 * t1 * this.dot3(this.grad3[gi1], x1, y1, z1); }
+                let t2 = 0.6 - x2 * x2 - y2 * y2 - z2 * z2; if (t2 < 0) n2 = 0.0; else { t2 *= t2; n2 = t2 * t2 * this.dot3(this.grad3[gi2], x2, y2, z2); }
+                let t3 = 0.6 - x3 * x3 - y3 * y3 - z3 * z3; if (t3 < 0) n3 = 0.0; else { t3 *= t3; n3 = t3 * t3 * this.dot3(this.grad3[gi3], x3, y3, z3); }
+                return 32.0 * (n0 + n1 + n2 + n3);
+            }
+        }
+        SimplexNoise.prototype.grad3 = [ [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0], [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1], [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1] ];
+
+        // --- 2. GAME ENGINE STATE ---
+        const WORLD_W = 151; 
+        const WORLD_H = 151; 
+        const CHUNK_CELLS = 30; 
+        const CHUNKS_X = (WORLD_W - 1) / CHUNK_CELLS; 
+        const CHUNKS_Y = (WORLD_H - 1) / CHUNK_CELLS; 
+        
+        const CELL_SIZE = 1000; 
+        const TERRAIN_HEIGHT_SCALE = 14000; 
+        const MAP_WIDTH = (WORLD_W - 1) * CELL_SIZE;
+        const MAP_HEIGHT = (WORLD_H - 1) * CELL_SIZE;
+
+        let simTime = 0;
+        let frameCount = 0;
+        let simplex = new SimplexNoise(12345); 
+        
+        let snowChunks = [];
+        let currentSnowChunk = 0;
+
+        const BIOMES = {
+            DEEP_OCEAN: 0, OCEAN: 1, BEACH: 2, PLAINS: 3, FOREST: 4, DESERT: 5, MOUNTAIN: 6, SNOW_PEAK: 7
+        };
+        const BIOME_COLORS = [
+            0x0f2d69, // Deep Ocean
+            0x1e5aa0, // Ocean
+            0xd2b478, // Beach
+            0x50a046, // Plains
+            0x1e6428, // Forest
+            0xdcc882, // Desert
+            0x787878, // Mountain
+            0xf0f0f0  // Snow peak
+        ];
+
+        let grid = new Array(WORLD_W * WORLD_H);
+        let gameState = {
+            speed: 0.01,
+            pressureBias: 0.0,
+            tempBias: 0.0,
+            disasterChance: 0.001,
+            creative: false,
+            paused: true,
+            playerCell: null
+        };
+        
+        // --- SURVIVAL & DISASTER STATE ---
+        let playerStats = {
+            health: 100,
+            wood: 0,
+            jacketTime: 0,
+            boatTime: 0,
+            activeSlot: 0 
+        };
+        
+        let treesData = [];
+        let instTrunks, instLeaves;
+        let builtObjectsGroup;
+        
+        let disasters = []; 
+        let activeDebris = []; 
+
+        // UI Bindings
+        const UI = {
+            biome: document.getElementById('hud-biome'), temp: document.getElementById('hud-temp'),
+            weather: document.getElementById('hud-weather'), mode: document.getElementById('hud-mode'),
+            pauseMenu: document.getElementById('pause-menu'), btnResume: document.getElementById('btn-resume'),
+            btnCreative: document.getElementById('btn-creative'), ctrlSpeed: document.getElementById('ctrl-speed'),
+            valSpeed: document.getElementById('val-speed'), ctrlPressure: document.getElementById('ctrl-pressure'),
+            valPressure: document.getElementById('val-pressure'), ctrlTemp: document.getElementById('ctrl-temp'),
+            valTemp: document.getElementById('val-temp'), flash: document.getElementById('flash-overlay'),
+            debugMap: document.getElementById('debug-map'), btnMapWeather: document.getElementById('btn-map-weather'),
+            btnMapTemp: document.getElementById('btn-map-temp'),
+            debugOverlay: document.getElementById('debug-overlay'),
+            cmdHint: document.getElementById('hud-cmd-hint'),
+            ctrlDisaster: document.getElementById('ctrl-disaster'),
+            valDisaster: document.getElementById('val-disaster'),
+            
+            healthBar: document.getElementById('hud-health'),
+            woodCount: document.getElementById('hud-wood'),
+            statusText: document.getElementById('hud-status'),
+            hint: document.getElementById('build-hint'),
+            slots: [null, document.getElementById('slot-1'), document.getElementById('slot-2'), document.getElementById('slot-3'), document.getElementById('slot-4')],
+
+            commandMenu: document.getElementById('command-menu'),
+            cmdDisasterType: document.getElementById('cmd-disaster-type'),
+            cmdIntensity: document.getElementById('cmd-intensity'),
+            cmdIntensityVal: document.getElementById('cmd-intensity-val'),
+            btnSummon: document.getElementById('btn-summon'),
+            cmdTempOffset: document.getElementById('cmd-temp-offset'),
+            cmdTempOffsetVal: document.getElementById('cmd-temp-offset-val'),
+            cmdPresOffset: document.getElementById('cmd-pres-offset'),
+            cmdPresOffsetVal: document.getElementById('cmd-pres-offset-val'),
+            btnModify: document.getElementById('btn-modify')
+        };
+
+        const debugCtx = UI.debugMap.getContext('2d', { willReadFrequently: true });
+        const debugImgData = debugCtx.createImageData(WORLD_W, WORLD_H);
+        const overlayCtx = UI.debugOverlay.getContext('2d');
+        let debugMapMode = 'weather';
+
+        const cloudCanvas = document.createElement('canvas');
+        cloudCanvas.width = WORLD_W; cloudCanvas.height = WORLD_H;
+        const cloudCtx = cloudCanvas.getContext('2d', { willReadFrequently: true });
+        const cloudImgData = cloudCtx.createImageData(WORLD_W, WORLD_H);
+        const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
+        cloudTexture.magFilter = THREE.LinearFilter;
+        cloudTexture.minFilter = THREE.LinearFilter;
+
+        // Generate World Data
+        function generateWorldData() {
+            for(let y = 0; y < WORLD_H; y++) {
+                for(let x = 0; x < WORLD_W; x++) {
+                    let idx = y * WORLD_W + x;
+                    
+                    let nx = x * 0.02, ny = y * 0.02;
+                    let e = 1 * simplex.noise2D(1 * nx, 1 * ny) + 0.5 * simplex.noise2D(2 * nx, 2 * ny) + 0.25 * simplex.noise2D(4 * nx, 4 * ny);
+                    e = (e / 1.75 + 1) / 2;
+                    e = Math.max(0, Math.min(1, e));
+                    
+                    let m = (simplex.noise2D(nx * 1.5 + 100, ny * 1.5 + 100) + 1) / 2;
+                    m = Math.max(0, Math.min(1, m));
+
+                    let biome;
+                    if (e < 0.25) biome = BIOMES.DEEP_OCEAN;
+                    else if (e < 0.4) biome = BIOMES.OCEAN;
+                    else if (e < 0.45) biome = BIOMES.BEACH;
+                    else if (e > 0.8) biome = BIOMES.SNOW_PEAK;
+                    else if (e > 0.65) biome = BIOMES.MOUNTAIN;
+                    else {
+                        if (m < 0.3) biome = BIOMES.DESERT;
+                        else if (m > 0.6) biome = BIOMES.FOREST;
+                        else biome = BIOMES.PLAINS;
+                    }
+
+                    let latTemp = 15 + (y / WORLD_H) * 85;
+                    if (e > 0.5) latTemp -= (e - 0.5) * 80;
+                    let landFactor = e > 0.45 ? Math.min(1.0, (e - 0.45) / 0.10) : 0;
+                    latTemp += ((0.5 - m) * 40) * landFactor;
+                    if (e < 0.45) {
+                        let depth = (0.45 - e) / 0.45;
+                        let moderateStrength = Math.min(1.0, depth * 1.5);
+                        latTemp = latTemp * (1 - moderateStrength * 0.8) + 60 * (moderateStrength * 0.8);
+                    }
+                    
+                    let initialSnow = latTemp <= 32 ? Math.random() * 2 + 2 : 0.0;
+                    grid[idx] = { e: e, m: m, biome: biome, baseTemp: latTemp, temp: latTemp, pressure: 0.5, snowLevel: initialSnow };
+                }
+            }
+            
+            for (let pass = 0; pass < 2; pass++) {
+                let smoothedTemps = new Float32Array(WORLD_W * WORLD_H);
+                let smoothedSnows = new Float32Array(WORLD_W * WORLD_H);
+                for(let y = 0; y < WORLD_H; y++) {
+                    for(let x = 0; x < WORLD_W; x++) {
+                        let sum = 0, sumSnow = 0, count = 0;
+                        for(let dy = -1; dy <= 1; dy++) {
+                            for(let dx = -1; dx <= 1; dx++) {
+                                let nx = x + dx, ny = y + dy;
+                                if(nx >= 0 && nx < WORLD_W && ny >= 0 && ny < WORLD_H) {
+                                    sum += grid[ny * WORLD_W + nx].baseTemp; 
+                                    sumSnow += grid[ny * WORLD_W + nx].snowLevel;
+                                    count++;
+                                }
+                            }
+                        }
+                        smoothedTemps[y * WORLD_W + x] = sum / count;
+                        smoothedSnows[y * WORLD_W + x] = sumSnow / count;
+                    }
+                }
+                for(let i = 0; i < WORLD_W * WORLD_H; i++) {
+                    grid[i].baseTemp = smoothedTemps[i]; 
+                    grid[i].temp = smoothedTemps[i];
+                    grid[i].snowLevel = smoothedSnows[i];
+                }
+            }
+        }
+        generateWorldData();
+
+        function lerp(a, b, t) { return a + (b - a) * t; }
+        
+        function getTempColor(t) {
+            if (t < 15) return [20, 20, 150];
+            if (t < 32) return [lerp(20,0,(t-15)/17), lerp(20,200,(t-15)/17), lerp(150,255,(t-15)/17)];
+            if (t < 50) return [0, lerp(200,255,(t-32)/18), lerp(255,100,(t-32)/18)];
+            if (t < 70) return [lerp(0,50,(t-50)/20), lerp(255,200,(t-50)/20), lerp(100,50,(t-50)/20)];
+            if (t < 85) return [lerp(50,255,(t-70)/15), lerp(200,200,(t-70)/15), lerp(50,0,(t-70)/15)];
+            if (t < 100) return [255, lerp(200,50,(t-85)/15), 0];
+            return [255, Math.max(0, 50 - (t-100)*2), 0]; 
+        }
+
+        function triggerDisaster(type, intensity, px, pz) {
+            let mesh = null;
+            if (type === 'tornado') {
+                let group = new THREE.Group();
+                let geo1 = new THREE.ConeGeometry(2500, 15000, 16, 1, true);
+                geo1.rotateX(Math.PI); geo1.translate(0, 7500, 0); 
+                let mat1 = new THREE.MeshBasicMaterial({color: 0x111111, transparent: true, opacity: 0.8, side: THREE.DoubleSide});
+                let mesh1 = new THREE.Mesh(geo1, mat1);
+                
+                let geo2 = new THREE.ConeGeometry(3500, 15000, 12, 1, true);
+                geo2.rotateX(Math.PI); geo2.translate(0, 7500, 0);
+                let mat2 = new THREE.MeshBasicMaterial({color: 0x222222, transparent: true, opacity: 0.4, side: THREE.DoubleSide, wireframe: true});
+                let mesh2 = new THREE.Mesh(geo2, mat2);
+
+                let geo3 = new THREE.CylinderGeometry(1, 1, 1, 32, 1, false);
+                geo3.translate(0, 0.5, 0); 
+                let mat3 = new THREE.MeshBasicMaterial({color: 0x4a5a6a, transparent: true, opacity: 0.95, side: THREE.FrontSide});
+                let mesh3 = new THREE.Mesh(geo3, mat3);
+                
+                group.add(mesh1);
+                group.add(mesh2);
+                group.add(mesh3);
+                group.position.set(px, 0, pz); 
+                scene.add(group);
+                mesh = group;
+            }
+
+            disasters.push({
+                id: Math.random() * 1000,
+                type: type,
+                x: px, z: pz,
+                vx: 500, 
+                vz: (Math.random() - 0.5) * 100,
+                targetVx: 500,
+                targetVz: (Math.random() - 0.5) * 100,
+                maxIntensity: intensity,
+                intensity: 0,
+                fluctuation: 1.0,
+                baseRadius: type === 'tornado' ? 4000 : 12000,
+                radius: type === 'tornado' ? 4000 : 12000,
+                age: 0,
+                life: 180, 
+                mesh: mesh
+            });
+        }
+
+        function updateWeatherSimulation(delta) {
+            simTime += gameState.speed;
+            
+            if (gameState.disasterChance > 0 && Math.random() < gameState.disasterChance * 5.0) {
+                for(let attempts = 0; attempts < 20; attempts++) {
+                    let gx = Math.floor(Math.random() * WORLD_W);
+                    let gy = Math.floor(Math.random() * WORLD_H);
+                    let cell = grid[gy * WORLD_W + gx];
+                    let px = gx * CELL_SIZE; let pz = gy * CELL_SIZE;
+
+                    if (cell.pressure < 0.25 && cell.temp >= 60 && cell.temp <= 80 && Math.random() < 0.2) {
+                        let tooClose = false;
+                        for(let d of disasters) {
+                            if (d.type === 'tornado' && Math.hypot(d.x - px, d.z - pz) < 25000) { tooClose = true; break; }
+                        }
+                        if (!tooClose) {
+                            triggerDisaster('tornado', 100 + Math.random()*150, px, pz);
+                            break;
+                        }
+                    } else if (cell.temp > 95 && Math.random() < 0.1) {
+                        triggerDisaster('heatwave', 50 + Math.random()*80, px, pz);
+                        break;
+                    } else if (cell.pressure < 0.35 && cell.temp < 25 && Math.random() < 0.2) {
+                        triggerDisaster('blizzard', 50 + Math.random()*80, px, pz);
+                        break;
+                    }
+                }
+            }
+
+            for(let y = 0; y < WORLD_H; y++) {
+                for(let x = 0; x < WORLD_W; x++) {
+                    let idx = y * WORLD_W + x;
+                    let cell = grid[idx];
+                    
+                    let pNoise = simplex.noise3D((x - simTime * 1.5) * 0.015, y * 0.015, simTime * 0.01);
+                    cell.pressure = ((pNoise + 1) / 2) + gameState.pressureBias;
+
+                    let tNoise = simplex.noise3D((x - simTime * 1.0) * 0.015, y * 0.015, simTime * 0.005 + 100);
+                    cell.temp = cell.baseTemp + (tNoise * 15) + gameState.tempBias;
+
+                    let cx = x * CELL_SIZE; let cz = y * CELL_SIZE;
+                    let tMod = 0, pMod = 0;
+                    for(let d of disasters) {
+                        let dist = Math.hypot(cx - d.x, cz - d.z);
+                        if (dist < d.radius) {
+                            let falloff = 1 - (dist / d.radius);
+                            if (d.type === 'heatwave') tMod += d.intensity * falloff;
+                            if (d.type === 'blizzard') tMod -= d.intensity * falloff;
+                            if (d.type === 'tornado') pMod -= (d.intensity * 0.005) * falloff; 
+                            if (d.type === 'modifier') { tMod += d.tMod * falloff; pMod += d.pMod * falloff; }
+                        }
+                    }
+                    cell.temp += tMod;
+                    cell.pressure += pMod;
+
+                    if (!gameState.paused && delta) {
+                        let pLevel = 0;
+                        if (cell.pressure < 0.45) {
+                            if (cell.pressure < 0.25) pLevel = 1.0;
+                            else if (cell.pressure < 0.35) pLevel = 0.6;
+                            else pLevel = 0.3;
+                        }
+                        
+                        let isSnowing = cell.pressure < 0.45 && cell.temp <= 32;
+                        let isMelting = cell.temp > 32;
+                        
+                        if (isSnowing && Math.random() < 0.5) {
+                            let rate = (pLevel === 1.0) ? (1.0 / 20.0) : (pLevel >= 0.6) ? (1.0 / 30.0) : (1.0 / 40.0);
+                            cell.snowLevel += rate * delta * 2.0; 
+                            if (cell.snowLevel > 4.0) cell.snowLevel = 4.0;
+                        } else if (isMelting && cell.snowLevel > 0 && Math.random() < 0.5) {
+                            cell.snowLevel -= (1.0 / 30.0) * delta * 2.0;
+                            if (cell.snowLevel < 0.0) cell.snowLevel = 0.0;
+                        }
+                    }
+
+                    let cloudDense = Math.max(0, 0.65 - cell.pressure) * 4.0;
+                    cloudDense = Math.min(1, cloudDense);
+                    
+                    let pIdx = idx * 4;
+                    cloudImgData.data[pIdx] = 255; cloudImgData.data[pIdx+1] = 255; cloudImgData.data[pIdx+2] = 255;
+                    cloudImgData.data[pIdx+3] = cloudDense > 0.1 ? Math.min(255, cloudDense * 200 + 55) : 0;
+                    
+                    if (gameState.paused) {
+                        let r, g, b;
+                        if (debugMapMode === 'temp') {
+                            let c = getTempColor(cell.temp);
+                            r=c[0]; g=c[1]; b=c[2];
+                        } else {
+                            let hex = BIOME_COLORS[cell.biome];
+                            r = (hex >> 16) & 255; g = (hex >> 8) & 255; b = hex & 255;
+                            if (cell.pressure < 0.45) {
+                                let intensity = cell.pressure < 0.25 ? 0.8 : (cell.pressure < 0.35 ? 0.55 : 0.3);
+                                if (cell.temp < 32) {
+                                    r = lerp(r, 255, intensity); g = lerp(g, 255, intensity); b = lerp(b, 255, intensity);
+                                } else {
+                                    if (cell.pressure < 0.25) { r = lerp(r, 40, 0.6); g = lerp(g, 40, 0.6); b = lerp(b, 50, 0.6); } 
+                                    else { r = lerp(r, 50, intensity*0.8); g = lerp(g, 100, intensity*0.8); b = lerp(b, 200, intensity*0.8); }
+                                }
+                            }
+                            if (cell.pressure > 0.45 && cell.pressure < 0.6) { r *= 0.85; g *= 0.85; b *= 0.85; }
+                        }
+                        debugImgData.data[pIdx] = r; debugImgData.data[pIdx+1] = g; debugImgData.data[pIdx+2] = b; debugImgData.data[pIdx+3] = 255;
+                    }
+                }
+            }
+            cloudCtx.putImageData(cloudImgData, 0, 0);
+            cloudTexture.needsUpdate = true;
+            
+            if (gameState.paused && UI.pauseMenu.style.display !== 'none') {
+                debugCtx.putImageData(debugImgData, 0, 0);
+                overlayCtx.clearRect(0, 0, 300, 300);
+                
+                for(let d of disasters) {
+                    if (d.type === 'modifier') continue;
+                    let dpx = (d.x / MAP_WIDTH) * 300;
+                    let dpz = (d.z / MAP_HEIGHT) * 300;
+                    let drad = (d.radius / MAP_WIDTH) * 300;
+                    
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(dpx, dpz, Math.max(3, drad), 0, Math.PI*2);
+                    
+                    if (d.type === 'tornado') {
+                        overlayCtx.fillStyle = 'rgba(50, 50, 50, 0.6)';
+                        overlayCtx.strokeStyle = '#222';
+                    } else if (d.type === 'blizzard') {
+                        overlayCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                        overlayCtx.strokeStyle = '#fff';
+                    } else if (d.type === 'heatwave') {
+                        overlayCtx.fillStyle = 'rgba(255, 100, 0, 0.4)';
+                        overlayCtx.strokeStyle = '#f00';
+                    }
+                    overlayCtx.fill();
+                    overlayCtx.lineWidth = 1;
+                    overlayCtx.stroke();
+                    
+                    overlayCtx.fillStyle = '#fff';
+                    overlayCtx.font = '10px Arial';
+                    overlayCtx.textAlign = 'center';
+                    overlayCtx.textBaseline = 'middle';
+                    let icon = d.type === 'tornado' ? '🌪️' : (d.type === 'blizzard' ? '❄️' : '🔥');
+                    overlayCtx.fillText(icon, dpx, dpz);
+                }
+
+                if (camera) {
+                    let px = (camera.position.x / MAP_WIDTH) * 300;
+                    let py = (camera.position.z / MAP_HEIGHT) * 300;
+                    overlayCtx.fillStyle = '#ff0000';
+                    overlayCtx.beginPath();
+                    overlayCtx.arc(px, py, 4, 0, Math.PI*2);
+                    overlayCtx.fill();
+                    overlayCtx.strokeStyle = '#ffffff';
+                    overlayCtx.lineWidth = 1.5;
+                    overlayCtx.stroke();
+                }
+            }
+        }
+
+        // --- Custom FPS Controller & Survival Logistics ---
+        const player = {
+            velocity: new THREE.Vector3(),
+            direction: new THREE.Vector3(),
+            baseSurvivalSpeed: 200.0, 
+            baseCreativeSpeed: 1500.0, 
+            jumpForce: 1200.0, 
+            gravity: 3500.0, 
+            canJump: false,
+            pitch: 0,
+            yaw: 0,
+            speedMod: 1.0,
+            lastVy: 0
+        };
+
+        // --- 3. THREE.JS 3D ENGINE ---
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, logarithmicDepthBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); 
+        scene.fog = new THREE.FogExp2(0x87CEEB, 0.00004); 
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 2.0, 60000);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        
+        const dirLight = new THREE.DirectionalLight(0xfff5e6, 0.8);
+        dirLight.position.set(100, 500, 50);
+        scene.add(dirLight);
+
+        const lightningLight = new THREE.PointLight(0xaaccff, 0, 15000);
+        scene.add(lightningLight);
+
+        const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, flatShading: true });
+        const terrainGroup = new THREE.Group();
+        const chunkGeoTemplate = new THREE.PlaneGeometry(CHUNK_CELLS * CELL_SIZE, CHUNK_CELLS * CELL_SIZE, CHUNK_CELLS, CHUNK_CELLS);
+        chunkGeoTemplate.rotateX(-Math.PI / 2);
+
+        for (let cy = 0; cy < CHUNKS_Y; cy++) {
+            for (let cx = 0; cx < CHUNKS_X; cx++) {
+                let geo = chunkGeoTemplate.clone();
+                let colors = [];
+                let pos = geo.attributes.position.array;
+                
+                for (let i = 0, j = 0; i < pos.length; i += 3, j++) {
+                    let localX = j % (CHUNK_CELLS + 1);
+                    let localY = Math.floor(j / (CHUNK_CELLS + 1));
+                    let globalX = cx * CHUNK_CELLS + localX;
+                    let globalY = cy * CHUNK_CELLS + localY;
+                    
+                    let cell = grid[globalY * WORLD_W + globalX];
+                    let height = cell.e > 0.45 ? (cell.e - 0.45) * TERRAIN_HEIGHT_SCALE : (cell.e - 0.45) * 5000 - 50;
+                    pos[i + 1] = height;
+
+                    let color = new THREE.Color(BIOME_COLORS[cell.biome]);
+                    colors.push(color.r, color.g, color.b);
+                }
+
+                geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                geo.computeVertexNormals();
+
+                let mesh = new THREE.Mesh(geo, material);
+                let chunkWidth = CHUNK_CELLS * CELL_SIZE;
+                mesh.position.set(cx * chunkWidth + chunkWidth / 2, 0, cy * chunkWidth + chunkWidth / 2);
+                terrainGroup.add(mesh);
+                
+                let snowGeo = chunkGeoTemplate.clone();
+                let sPos = snowGeo.attributes.position.array;
+                for (let i = 0, j = 0; i < sPos.length; i += 3, j++) {
+                    let localX = j % (CHUNK_CELLS + 1);
+                    let localY = Math.floor(j / (CHUNK_CELLS + 1));
+                    let globalX = cx * CHUNK_CELLS + localX;
+                    let globalY = cy * CHUNK_CELLS + localY;
+                    let cell = grid[globalY * WORLD_W + globalX];
+                    let baseHeight = cell.e > 0.45 ? (cell.e - 0.45) * TERRAIN_HEIGHT_SCALE : (cell.e - 0.45) * 5000 - 50;
+                    
+                    sPos[i + 1] = cell.snowLevel > 0.01 ? baseHeight + (cell.snowLevel * 7.5) + 5.0 : baseHeight - 200.0; 
+                }
+                snowGeo.computeVertexNormals();
+                let snowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, flatShading: true, transparent: false });
+                let snowMesh = new THREE.Mesh(snowGeo, snowMat);
+                snowMesh.position.set(cx * chunkWidth + chunkWidth / 2, 0, cy * chunkWidth + chunkWidth / 2);
+                terrainGroup.add(snowMesh);
+
+                snowChunks.push({ geo: snowGeo, mesh: snowMesh, cx: cx, cy: cy });
+            }
+        }
+        scene.add(terrainGroup);
+
+        const waterGeo = new THREE.PlaneGeometry(MAP_WIDTH * 2, MAP_HEIGHT * 2);
+        waterGeo.rotateX(-Math.PI / 2);
+        const waterMat = new THREE.MeshStandardMaterial({ color: 0x1e5aa0, transparent: true, opacity: 0.8, roughness: 0.1 });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.position.set(MAP_WIDTH/2, -20, MAP_HEIGHT/2);
+        scene.add(water);
+
+        const skyCloudGeo = new THREE.PlaneGeometry(MAP_WIDTH, MAP_HEIGHT);
+        skyCloudGeo.rotateX(-Math.PI / 2);
+        const cloudGroup = new THREE.Group();
+        for(let i=0; i<5; i++) {
+            const skyCloudMat = new THREE.MeshLambertMaterial({ 
+                map: cloudTexture, transparent: true, opacity: 0.7 - (i * 0.12), depthWrite: false, side: THREE.DoubleSide
+            });
+            const mesh = new THREE.Mesh(skyCloudGeo, skyCloudMat);
+            mesh.position.y = i * 320; 
+            cloudGroup.add(mesh);
+        }
+        cloudGroup.position.set(MAP_WIDTH/2, 10000, MAP_HEIGHT/2); 
+        scene.add(cloudGroup);
+
+        builtObjectsGroup = new THREE.Group();
+        scene.add(builtObjectsGroup);
+        
+        const buildMat = new THREE.MeshStandardMaterial({color: 0x8b5a2b, roughness: 0.9});
+        const wallGeo = new THREE.BoxGeometry(200, 200, 20);
+        const floorGeo = new THREE.BoxGeometry(200, 20, 200);
+
+        const previewMat = new THREE.MeshBasicMaterial({color: 0x3b82f6, transparent: true, opacity: 0.5, wireframe: true});
+        const previewWall = new THREE.Mesh(wallGeo, previewMat);
+        const previewFloor = new THREE.Mesh(floorGeo, previewMat);
+        scene.add(previewWall); scene.add(previewFloor);
+        previewWall.visible = false; previewFloor.visible = false;
+
+        function generateScenery() {
+            const treeTrunkGeo = new THREE.CylinderGeometry(16, 24, 100, 5);
+            const treeLeavesGeo = new THREE.ConeGeometry(72, 200, 5);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+            const leavesMat = new THREE.MeshStandardMaterial({ color: 0x228b22, flatShading: true });
+
+            const cactusGeo = new THREE.CylinderGeometry(16, 16, 120, 6);
+            const cactusMat = new THREE.MeshStandardMaterial({ color: 0x4B5320 });
+
+            let forestCount = 0; let desertCount = 0;
+            for(let i=0; i<grid.length; i++) {
+                if (grid[i].biome === BIOMES.FOREST) forestCount += 3;
+                if (grid[i].biome === BIOMES.DESERT) desertCount += 1;
+            }
+
+            instTrunks = new THREE.InstancedMesh(treeTrunkGeo, trunkMat, forestCount);
+            instLeaves = new THREE.InstancedMesh(treeLeavesGeo, leavesMat, forestCount);
+            const instCacti = new THREE.InstancedMesh(cactusGeo, cactusMat, desertCount);
+
+            let dTrunk = new THREE.Object3D(); let dLeaf = new THREE.Object3D();
+            let dCactus = new THREE.Object3D();
+            let fIdx = 0, dIdx = 0;
+
+            for(let y = 0; y < WORLD_H - 1; y++) {
+                for(let x = 0; x < WORLD_W - 1; x++) {
+                    let cell = grid[y * WORLD_W + x];
+
+                    if (cell.biome === BIOMES.FOREST) {
+                        for(let t=0; t<3; t++) {
+                            if(Math.random() < 0.45 && fIdx < forestCount) {
+                                let px = x * CELL_SIZE + (Math.random() - 0.5) * CELL_SIZE * 0.8;
+                                let pz = y * CELL_SIZE + (Math.random() - 0.5) * CELL_SIZE * 0.8;
+                                let py = getTerrainHeight(px, pz);
+                                
+                                dTrunk.position.set(px, py + 50, pz);
+                                dTrunk.rotation.y = Math.random() * Math.PI;
+                                dTrunk.scale.setScalar(0.8 + Math.random()*0.6);
+                                dTrunk.updateMatrix();
+                                instTrunks.setMatrixAt(fIdx, dTrunk.matrix);
+
+                                dLeaf.position.set(px, py + 140 + dTrunk.scale.y * 12, pz);
+                                dLeaf.rotation.y = dTrunk.rotation.y;
+                                dLeaf.scale.copy(dTrunk.scale);
+                                dLeaf.updateMatrix();
+                                instLeaves.setMatrixAt(fIdx, dLeaf.matrix);
+                                
+                                treesData.push({ id: fIdx, x: px, z: pz, harvested: false, matrixTrunk: dTrunk.matrix.clone(), matrixLeaves: dLeaf.matrix.clone() });
+                                fIdx++;
+                            }
+                        }
+                    } 
+                    else if (cell.biome === BIOMES.DESERT && dIdx < desertCount) {
+                        if(Math.random() < 0.1) {
+                            let px = x * CELL_SIZE + (Math.random() - 0.5) * CELL_SIZE * 0.8;
+                            let pz = y * CELL_SIZE + (Math.random() - 0.5) * CELL_SIZE * 0.8;
+                            let py = getTerrainHeight(px, pz);
+
+                            dCactus.position.set(px, py + 60, pz);
+                            dCactus.rotation.y = Math.random() * Math.PI;
+                            dCactus.rotation.z = (Math.random() - 0.5) * 0.2;
+                            dCactus.scale.setScalar(0.7 + Math.random()*0.5);
+                            dCactus.updateMatrix();
+                            instCacti.setMatrixAt(dIdx, dCactus.matrix);
+                            dIdx++;
+                        }
+                    }
+                }
+            }
+            scene.add(instTrunks);
+            scene.add(instLeaves);
+            scene.add(instCacti);
+            
+            if (instTrunks.geometry) instTrunks.geometry.computeBoundingSphere();
+            if (instLeaves.geometry) instLeaves.geometry.computeBoundingSphere();
+        }
+
+        const PARTICLE_COUNT = 6000; 
+        const particleGeo = new THREE.BufferGeometry();
+        const pPositions = new Float32Array(PARTICLE_COUNT * 3);
+        const pVelocities = new Float32Array(PARTICLE_COUNT);
+        
+        for(let i=0; i<PARTICLE_COUNT; i++) {
+            pPositions[i*3] = (Math.random() - 0.5) * 8000; 
+            pPositions[i*3+1] = Math.random() * 4000;       
+            pPositions[i*3+2] = (Math.random() - 0.5) * 8000; 
+            pVelocities[i] = 1 + Math.random() * 2; 
+        }
+        particleGeo.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+        particleGeo.setAttribute('velocity', new THREE.BufferAttribute(pVelocities, 1));
+
+        const particleMat = new THREE.PointsMaterial({
+            color: 0xffffff, size: 15.0, transparent: true, opacity: 0.0, depthWrite: false, blending: THREE.AdditiveBlending
+        });
+        const particleSystem = new THREE.Points(particleGeo, particleMat);
+        scene.add(particleSystem);
+
+        function getTerrainHeight(x, z) {
+            let gx = x / CELL_SIZE; let gy = z / CELL_SIZE;
+            if (gx < 0 || gx >= WORLD_W - 1 || gy < 0 || gy >= WORLD_H - 1) return -10;
+
+            let ix = Math.floor(gx); let iy = Math.floor(gy);
+            let fx = gx - ix; let fy = gy - iy;
+            
+            let h00 = getCellHeight(ix, iy); let h10 = getCellHeight(ix + 1, iy);
+            let h01 = getCellHeight(ix, iy + 1); let h11 = getCellHeight(ix + 1, iy + 1);
+            
+            if (fx + fy <= 1) return h00 + fx * (h10 - h00) + fy * (h01 - h00);
+            else return h11 + (1 - fx) * (h01 - h11) + (1 - fy) * (h10 - h11);
+        }
+
+        function getCellHeight(ix, iy) {
+            let cell = grid[iy * WORLD_W + ix];
+            if (!cell) return -10;
+            return cell.e > 0.45 ? (cell.e - 0.45) * TERRAIN_HEIGHT_SCALE : (cell.e - 0.45) * 5000 - 50;
+        }
+
+        function spawnPlayer() {
+            let spawned = false;
+            while(!spawned) {
+                let gx = Math.floor(Math.random() * (WORLD_W - 1));
+                let gy = Math.floor(Math.random() * (WORLD_H - 1));
+                let cell = grid[gy * WORLD_W + gx];
+                if (cell.e > 0.46) {
+                    camera.position.x = gx * CELL_SIZE;
+                    camera.position.z = gy * CELL_SIZE;
+                    camera.position.y = getTerrainHeight(camera.position.x, camera.position.z) + 100;
+                    player.velocity.y = 0;
+                    player.lastVy = 0;
+                    spawned = true;
+                }
+            }
+        }
+        
+        generateScenery(); 
+        spawnPlayer();
+
+        const keys = { w: false, a: false, s: false, d: false, space: false, shift: false, click: false };
+        const raycaster = new THREE.Raycaster();
+        const centerScreen = new THREE.Vector2(0, 0);
+
+        function updateHUD() {
+            UI.healthBar.style.width = Math.max(0, playerStats.health) + '%';
+            UI.woodCount.innerText = playerStats.wood;
+            
+            for(let i=1; i<=4; i++) {
+                if(playerStats.activeSlot === i) UI.slots[i].classList.add('active');
+                else UI.slots[i].classList.remove('active');
+            }
+            
+            if(playerStats.activeSlot >= 3) {
+                UI.hint.classList.remove('hidden');
+                UI.hint.innerText = `Left Click to Place | ${playerStats.activeSlot===3?'Wall':'Floor'} (12w) | Q to Cancel`;
+            } else {
+                UI.hint.classList.add('hidden');
+            }
+
+            let statuses = [];
+            if(playerStats.boatTime > 0) statuses.push(`🚢 Boat: ${Math.ceil(playerStats.boatTime)}s`);
+            if(playerStats.jacketTime > 0) statuses.push(`🧥 Jacket: ${Math.ceil(playerStats.jacketTime)}s`);
+            UI.statusText.innerText = statuses.join('   |   ');
+            
+            if(gameState.creative) UI.cmdHint.classList.remove('hidden');
+            else UI.cmdHint.classList.add('hidden');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!gameState.paused) {
+                if (e.code === 'KeyW') keys.w = true;
+                if (e.code === 'KeyA') keys.a = true;
+                if (e.code === 'KeyS') keys.s = true;
+                if (e.code === 'KeyD') keys.d = true;
+                if (e.code === 'Space') keys.space = true;
+                if (e.code === 'ShiftLeft') keys.shift = true;
+                
+                if (e.code === 'Digit1') craftBoat();
+                if (e.code === 'Digit2') craftJacket();
+                if (e.code === 'Digit3') { playerStats.activeSlot = 3; updateHUD(); }
+                if (e.code === 'Digit4') { playerStats.activeSlot = 4; updateHUD(); }
+                if (e.code === 'KeyQ') { playerStats.activeSlot = 0; updateHUD(); }
+            }
+            if (e.code === 'Escape') {
+                if (UI.commandMenu.style.display === 'flex') {
+                    UI.commandMenu.style.display = 'none';
+                    document.body.requestPointerLock();
+                } else {
+                    togglePause();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'KeyW') keys.w = false;
+            if (e.code === 'KeyA') keys.a = false;
+            if (e.code === 'KeyS') keys.s = false;
+            if (e.code === 'KeyD') keys.d = false;
+            if (e.code === 'Space') keys.space = false;
+            if (e.code === 'ShiftLeft') keys.shift = false;
+            
+            if (e.code === 'Slash' && gameState.creative) {
+                if (UI.commandMenu.style.display !== 'flex') {
+                    document.exitPointerLock();
+                    UI.commandMenu.style.display = 'flex';
+                    UI.pauseMenu.style.display = 'none'; 
+                } else {
+                    UI.commandMenu.style.display = 'none';
+                    document.body.requestPointerLock();
+                }
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (gameState.paused) return;
+            const sensitivity = 0.002;
+            player.yaw -= e.movementX * sensitivity;
+            player.pitch -= e.movementY * sensitivity;
+            player.pitch = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, player.pitch));
+        });
+
+        document.addEventListener('mousedown', (e) => {
+            if (gameState.paused) return;
+            if (e.button === 0) { 
+                raycaster.setFromCamera(centerScreen, camera);
+                
+                let buildHits = raycaster.intersectObject(builtObjectsGroup, true);
+                if(buildHits.length > 0 && buildHits[0].distance < 600) {
+                    let obj = buildHits[0].object;
+                    builtObjectsGroup.remove(obj);
+                    obj.geometry.dispose(); obj.material.dispose();
+                    playerStats.wood += 12;
+                    updateHUD();
+                    return;
+                }
+
+                let treeHits = raycaster.intersectObjects([instTrunks, instLeaves]);
+                if(treeHits.length > 0 && treeHits[0].distance < 600) {
+                    let instanceId = treeHits[0].instanceId;
+                    if(instanceId !== undefined && !treesData[instanceId].harvested) {
+                        treesData[instanceId].harvested = true;
+                        let hideMat = new THREE.Matrix4().makeScale(0,0,0);
+                        instTrunks.setMatrixAt(instanceId, hideMat);
+                        instLeaves.setMatrixAt(instanceId, hideMat);
+                        instTrunks.instanceMatrix.needsUpdate = true;
+                        instLeaves.instanceMatrix.needsUpdate = true;
+                        
+                        playerStats.wood += Math.floor(Math.random() * 4) + 2; 
+                        updateHUD();
+                    }
+                    return; 
+                }
+
+                if(playerStats.activeSlot === 3 && playerStats.wood >= 12 && previewWall.visible) {
+                    let mesh = new THREE.Mesh(wallGeo, buildMat);
+                    mesh.position.copy(previewWall.position);
+                    mesh.rotation.copy(previewWall.rotation);
+                    builtObjectsGroup.add(mesh);
+                    playerStats.wood -= 12;
+                    updateHUD();
+                } else if(playerStats.activeSlot === 4 && playerStats.wood >= 12 && previewFloor.visible) {
+                    let mesh = new THREE.Mesh(floorGeo, buildMat);
+                    mesh.position.copy(previewFloor.position);
+                    mesh.rotation.copy(previewFloor.rotation);
+                    builtObjectsGroup.add(mesh);
+                    playerStats.wood -= 12;
+                    updateHUD();
+                }
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            if (document.pointerLockElement !== document.body && UI.commandMenu.style.display !== 'flex') {
+                document.body.requestPointerLock();
+            }
+        });
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                gameState.paused = false;
+                UI.pauseMenu.style.display = 'none';
+                UI.commandMenu.style.display = 'none';
+            } else {
+                gameState.paused = true;
+                if(UI.commandMenu.style.display !== 'flex') {
+                    UI.pauseMenu.style.display = 'flex';
+                }
+                for(let k in keys) keys[k] = false;
+            }
+        });
+
+        function togglePause() {
+            if (document.pointerLockElement === document.body) document.exitPointerLock();
+        }
+
+        function craftBoat() {
+            if(playerStats.wood >= 8) {
+                playerStats.wood -= 8; playerStats.boatTime += 60; playerStats.activeSlot = 0; updateHUD();
+            }
+        }
+        function craftJacket() {
+            if(playerStats.wood >= 4) {
+                playerStats.wood -= 4; playerStats.jacketTime += 180; playerStats.activeSlot = 0; updateHUD();
+            }
+        }
+        function die() {
+            playerStats.health = 100; playerStats.wood = Math.floor(playerStats.wood / 2); 
+            playerStats.boatTime = 0; playerStats.jacketTime = 0; updateHUD(); spawnPlayer();
+        }
+
+        UI.btnResume.addEventListener('click', () => { document.body.requestPointerLock(); });
+        
+        UI.ctrlSpeed.addEventListener('input', (e) => { 
+            gameState.speed = parseFloat(e.target.value); 
+            UI.valSpeed.innerText = gameState.speed.toFixed(3) + 'x'; 
+        });
+        
+        UI.ctrlDisaster.addEventListener('input', (e) => { 
+            gameState.disasterChance = parseFloat(e.target.value); 
+            let label = "Off";
+            if(gameState.disasterChance > 0) label = "Low";
+            if(gameState.disasterChance > 0.001) label = "Normal";
+            if(gameState.disasterChance > 0.003) label = "High";
+            if(gameState.disasterChance >= 0.005) label = "Extreme";
+            UI.valDisaster.innerText = label; 
+        });
+
+        UI.ctrlPressure.addEventListener('input', (e) => { gameState.pressureBias = parseFloat(e.target.value); UI.valPressure.innerText = (gameState.pressureBias > 0 ? '+' : '') + gameState.pressureBias.toFixed(2); });
+        UI.ctrlTemp.addEventListener('input', (e) => { gameState.tempBias = parseFloat(e.target.value); UI.valTemp.innerText = (gameState.tempBias > 0 ? '+' : '') + gameState.tempBias + '°F'; });
+        
+        UI.btnMapWeather.addEventListener('click', () => {
+            debugMapMode = 'weather';
+            UI.btnMapWeather.classList.replace('bg-slate-700', 'bg-blue-600'); UI.btnMapWeather.classList.replace('text-slate-300', 'text-white');
+            UI.btnMapTemp.classList.replace('bg-blue-600', 'bg-slate-700'); UI.btnMapTemp.classList.replace('text-white', 'text-slate-300');
+        });
+        UI.btnMapTemp.addEventListener('click', () => {
+            debugMapMode = 'temp';
+            UI.btnMapTemp.classList.replace('bg-slate-700', 'bg-blue-600'); UI.btnMapTemp.classList.replace('text-slate-300', 'text-white');
+            UI.btnMapWeather.classList.replace('bg-blue-600', 'bg-slate-700'); UI.btnMapWeather.classList.replace('text-white', 'text-slate-300');
+        });
+        UI.btnCreative.addEventListener('click', () => {
+            gameState.creative = !gameState.creative;
+            UI.btnCreative.innerText = gameState.creative ? "On" : "Off";
+            UI.btnCreative.className = gameState.creative ? "px-4 py-1 bg-green-600 hover:bg-green-500 rounded text-xs font-bold transition" : "px-4 py-1 bg-slate-600 hover:bg-slate-500 rounded text-xs font-bold transition";
+            UI.mode.innerText = gameState.creative ? "Creative" : "Survival";
+            UI.mode.className = gameState.creative ? "text-purple-400 font-bold" : "text-yellow-400 font-bold";
+            updateHUD();
+        });
+
+        UI.cmdIntensity.addEventListener('input', (e) => { UI.cmdIntensityVal.innerText = e.target.value; });
+        UI.cmdTempOffset.addEventListener('input', (e) => { UI.cmdTempOffsetVal.innerText = e.target.value; });
+        UI.cmdPresOffset.addEventListener('input', (e) => { UI.cmdPresOffsetVal.innerText = e.target.value; });
+
+        UI.btnSummon.addEventListener('click', () => {
+            let type = UI.cmdDisasterType.value;
+            let intensity = parseFloat(UI.cmdIntensity.value);
+            let px = camera.position.x; let pz = camera.position.z;
+            
+            triggerDisaster(type, intensity, px, pz);
+            document.body.requestPointerLock();
+        });
+
+        UI.btnModify.addEventListener('click', () => {
+            disasters.push({
+                type: 'modifier',
+                x: camera.position.x, z: camera.position.z,
+                vx: 0, vz: 0,
+                targetVx: 0, targetVz: 0,
+                tMod: parseFloat(UI.cmdTempOffset.value),
+                pMod: parseFloat(UI.cmdPresOffset.value),
+                intensity: 1.0, maxIntensity: 1.0, fluctuation: 1.0,
+                radius: 10000,
+                age: 0, life: 999999, mesh: null
+            });
+            document.body.requestPointerLock();
+        });
+
+        function spawnDebris(x, z, d, type) {
+            if(activeDebris.length > 50) return; 
+            let mesh;
+            if (type === 'tree') {
+                mesh = new THREE.Mesh(new THREE.CylinderGeometry(16, 24, 100, 5), new THREE.MeshStandardMaterial({color: 0x5c4033}));
+            } else {
+                mesh = new THREE.Mesh(wallGeo, buildMat);
+            }
+            scene.add(mesh);
+            activeDebris.push({
+                mesh: mesh, angle: Math.random() * Math.PI * 2, height: getTerrainHeight(x, z), radius: Math.random() * 200 + 200, tornado: d, age: 0
+            });
+        }
+
+
+        // --- MAIN GAME LOOP ---
+        const clock = new THREE.Clock();
+        updateHUD(); 
+
+        function animate() {
+            requestAnimationFrame(animate);
+            let delta = clock.getDelta();
+            if (delta > 0.1) delta = 0.1; 
+            frameCount++;
+            
+            updateWeatherSimulation(delta);
+
+            // GLOBAL LIGHTNING STRIKES (visible from afar)
+            if (frameCount % 10 === 0 && Math.random() < 0.5) { 
+                let rx = Math.floor(Math.random() * WORLD_W);
+                let ry = Math.floor(Math.random() * WORLD_H);
+                let rCell = grid[ry * WORLD_W + rx];
+                if (rCell && rCell.pressure < 0.25 && rCell.temp >= 32) {
+                    let sx = rx * CELL_SIZE; 
+                    let sz = ry * CELL_SIZE;
+                    let distToPlayer = Math.hypot(camera.position.x - sx, camera.position.z - sz);
+                    
+                    if (distToPlayer < 1000 && !gameState.creative && Math.random() < 0.02) {
+                         playerStats.health -= 75;
+                         UI.flash.style.opacity = '1';
+                         setTimeout(() => { UI.flash.style.opacity = '0'; }, 50);
+                         if (playerStats.health <= 0) die(); else updateHUD();
+                         lightningLight.position.copy(camera.position);
+                         lightningLight.intensity = 50.0;
+                         lightningLight.distance = 5000;
+                    } else {
+                         lightningLight.position.set(sx, 10000 + Math.random() * 1000, sz);
+                         lightningLight.intensity = 150.0 + Math.random() * 50;
+                         lightningLight.distance = 4000; // Constrained distance to illuminate only clouds, not entire map
+                    }
+                }
+            }
+
+            if (!gameState.paused) {
+                // --- UPDATE SNOW MESHES (Staggered) ---
+                if (snowChunks.length > 0) {
+                    let chunk = snowChunks[currentSnowChunk];
+                    let sPos = chunk.geo.attributes.position.array;
+                    let updated = false;
+                    
+                    for (let i = 0, j = 0; i < sPos.length; i += 3, j++) {
+                        let localX = j % (CHUNK_CELLS + 1);
+                        let localY = Math.floor(j / (CHUNK_CELLS + 1));
+                        let globalX = chunk.cx * CHUNK_CELLS + localX;
+                        let globalY = chunk.cy * CHUNK_CELLS + localY;
+                        
+                        let cell = grid[globalY * WORLD_W + globalX];
+                        if (!cell) continue;
+                        
+                        let baseHeight = cell.e > 0.45 ? (cell.e - 0.45) * TERRAIN_HEIGHT_SCALE : (cell.e - 0.45) * 5000 - 50;
+                        let targetY = cell.snowLevel > 0.01 ? baseHeight + (cell.snowLevel * 7.5) + 5.0 : baseHeight - 200.0;
+                        
+                        if (Math.abs(sPos[i + 1] - targetY) > 0.1) {
+                            sPos[i + 1] = targetY;
+                            updated = true;
+                        }
+                    }
+                    
+                    if (updated) {
+                        chunk.geo.attributes.position.needsUpdate = true;
+                        chunk.geo.computeVertexNormals();
+                    }
+                    currentSnowChunk = (currentSnowChunk + 1) % snowChunks.length;
+                }
+
+                // --- DISASTER LOGIC ---
+                for (let i = disasters.length - 1; i >= 0; i--) {
+                    let d = disasters[i];
+                    d.age += delta;
+                    
+                    let px = Math.floor(d.x / CELL_SIZE);
+                    let pz = Math.floor(d.z / CELL_SIZE);
+                    let dCell = null;
+                    if(px >= 0 && px < WORLD_W && pz >= 0 && pz < WORLD_H) {
+                        dCell = grid[pz * WORLD_W + px];
+                    }
+
+                    if (d.type === 'tornado') {
+                        if (Math.random() < 0.05) {
+                            d.targetVx = 300 + Math.random() * 400; 
+                            d.targetVz = (Math.random() - 0.5) * 800; 
+                        }
+                    } else if (d.type !== 'modifier') {
+                        if (Math.random() < 0.02) {
+                            d.targetVx = 400 + Math.random() * 200;
+                            d.targetVz = (Math.random() - 0.5) * 200;
+                        }
+                    }
+                    
+                    if (d.type !== 'modifier') {
+                        d.vx += (d.targetVx - d.vx) * delta * 0.5;
+                        d.vz += (d.targetVz - d.vz) * delta * 0.5;
+                    }
+
+                    let lifePhase = d.age / d.life;
+                    if(d.type !== 'modifier') {
+                        let baseCurve = Math.sin(lifePhase * Math.PI); 
+
+                        let weakenFactor = 1.0;
+                        if (dCell) {
+                            if (d.type === 'tornado' && dCell.pressure > 0.45) weakenFactor = 0.4;
+                            if (d.type === 'blizzard' && dCell.temp > 32) weakenFactor = 0.4;
+                            if (d.type === 'heatwave' && dCell.temp < 70) weakenFactor = 0.4;
+                        }
+
+                        if (Math.random() < 0.1) d.fluctuation += (Math.random() - 0.5) * 0.2;
+                        d.fluctuation = Math.max(0.5, Math.min(1.5, d.fluctuation));
+
+                        d.intensity = d.maxIntensity * baseCurve * d.fluctuation * weakenFactor;
+                        d.intensity = Math.max(0, d.intensity);
+                        
+                        if (weakenFactor < 1.0 && lifePhase > 0.5) {
+                            d.age += delta * 2; 
+                        }
+
+                        let scaleRatio = Math.max(0.1, d.intensity / d.maxIntensity);
+                        d.radius = d.baseRadius * scaleRatio;
+
+                        if (d.mesh) {
+                            d.mesh.scale.set(scaleRatio, scaleRatio, scaleRatio);
+                        }
+                    }
+
+                    d.x += d.vx * delta;
+                    d.z += d.vz * delta;
+
+                    if (d.mesh) {
+                        d.mesh.position.x = d.x; 
+                        d.mesh.position.z = d.z;
+                        if(d.type === 'tornado') {
+                            d.mesh.position.y = getTerrainHeight(d.x, d.z);
+                            d.mesh.children[0].rotation.y += delta * 5.0; 
+                            d.mesh.children[1].rotation.y -= delta * 3.0; 
+                            d.mesh.children[2].scale.set(d.radius * 1.5, 15000, d.radius * 1.5); 
+                        }
+                    }
+
+                    let outOfBoundsMargin = 10000;
+                    if (d.x < -outOfBoundsMargin || d.x > MAP_WIDTH + outOfBoundsMargin || d.z < -outOfBoundsMargin || d.z > MAP_HEIGHT + outOfBoundsMargin) {
+                        d.age = d.life; 
+                    }
+
+                    if (d.type === 'tornado') {
+                        if(!gameState.creative) {
+                            let distToPlayer = Math.hypot(camera.position.x - d.x, camera.position.z - d.z);
+                            if (distToPlayer < d.radius) {
+                                let force = (1 - distToPlayer / d.radius) * (d.intensity / 50.0);
+                                let dir = new THREE.Vector2(d.x - camera.position.x, d.z - camera.position.z).normalize();
+                                player.velocity.x += dir.x * force * 15000 * delta; 
+                                player.velocity.z += dir.y * force * 15000 * delta;
+                                player.velocity.y += force * 12000 * delta; 
+                            }
+                        }
+
+                        for(let t=0; t<treesData.length; t++) {
+                            if (!treesData[t].harvested) {
+                                let tDist = Math.hypot(treesData[t].x - d.x, treesData[t].z - d.z);
+                                if (tDist < d.radius * 0.4) {
+                                    treesData[t].harvested = true;
+                                    let hideMat = new THREE.Matrix4().makeScale(0,0,0);
+                                    instTrunks.setMatrixAt(t, hideMat); instLeaves.setMatrixAt(t, hideMat);
+                                    instTrunks.instanceMatrix.needsUpdate = true; instLeaves.instanceMatrix.needsUpdate = true;
+                                    spawnDebris(treesData[t].x, treesData[t].z, d, 'tree');
+                                }
+                            }
+                        }
+                        
+                        for (let b = builtObjectsGroup.children.length - 1; b >= 0; b--) {
+                            let obj = builtObjectsGroup.children[b];
+                            let oDist = Math.hypot(obj.position.x - d.x, obj.position.z - d.z);
+                            if (oDist < d.radius * 0.4) {
+                                builtObjectsGroup.remove(obj);
+                                spawnDebris(obj.position.x, obj.position.z, d, 'build');
+                            }
+                        }
+                    }
+
+                    if (d.age >= d.life) {
+                        if(d.mesh) { 
+                            scene.remove(d.mesh); 
+                            if(d.mesh.children) {
+                                d.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
+                            }
+                        }
+                        disasters.splice(i, 1);
+                    }
+                }
+
+                // Animate Debris
+                for (let i = activeDebris.length - 1; i >= 0; i--) {
+                    let deb = activeDebris[i];
+                    deb.age += delta;
+                    deb.angle += delta * 6.0; 
+                    deb.height += delta * 1500; 
+                    deb.radius += delta * 150; 
+                    
+                    deb.mesh.position.x = deb.tornado.x + Math.cos(deb.angle) * deb.radius;
+                    deb.mesh.position.z = deb.tornado.z + Math.sin(deb.angle) * deb.radius;
+                    deb.mesh.position.y = deb.height;
+                    deb.mesh.rotation.x += delta * 10; deb.mesh.rotation.y += delta * 15;
+
+                    if (deb.age > 8 || deb.tornado.age >= deb.tornado.life) {
+                        scene.remove(deb.mesh);
+                        if(deb.mesh.geometry) deb.mesh.geometry.dispose();
+                        if(deb.mesh.material) deb.mesh.material.dispose();
+                        activeDebris.splice(i, 1);
+                    }
+                }
+                
+                // Preview Build Logic - Snap to box grid
+                const forward = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(0, player.yaw, 0));
+                
+                if (playerStats.activeSlot >= 3) {
+                    let lookDist = 400;
+                    let pPos = new THREE.Vector3().copy(camera.position).add(forward.clone().multiplyScalar(lookDist));
+                    
+                    let cellX = Math.round(pPos.x / 200) * 200;
+                    let cellZ = Math.round(pPos.z / 200) * 200;
+                    let cellY = Math.round(pPos.y / 200) * 200;
+
+                    if (playerStats.activeSlot === 3) { // Wall (snap to edge of floor)
+                        previewWall.visible = true; previewFloor.visible = false;
+                        let dx = pPos.x - cellX;
+                        let dz = pPos.z - cellZ;
+                        if (Math.abs(dx) > Math.abs(dz)) {
+                            previewWall.position.set(cellX + Math.sign(dx) * 100, cellY + 100, cellZ);
+                            previewWall.rotation.y = Math.PI / 2;
+                        } else {
+                            previewWall.position.set(cellX, cellY + 100, cellZ + Math.sign(dz) * 100);
+                            previewWall.rotation.y = 0;
+                        }
+                    } else if (playerStats.activeSlot === 4) { // Floor
+                        previewFloor.visible = true; previewWall.visible = false;
+                        previewFloor.position.set(cellX, cellY, cellZ);
+                    }
+                } else {
+                    previewWall.visible = false; previewFloor.visible = false;
+                }
+
+                // Player Physics & Movement
+                player.velocity.x -= player.velocity.x * 10.0 * delta; 
+                player.velocity.z -= player.velocity.z * 10.0 * delta;
+                
+                if (!gameState.creative) player.velocity.y -= player.gravity * delta; 
+                else player.velocity.y -= player.velocity.y * 10.0 * delta; 
+
+                player.direction.z = Number(keys.w) - Number(keys.s);
+                player.direction.x = Number(keys.d) - Number(keys.a); 
+                player.direction.normalize();
+
+                let baseSpeed = gameState.creative ? player.baseCreativeSpeed : player.baseSurvivalSpeed;
+                let moveSpeed = baseSpeed * (keys.shift ? 1.0 : 1.0) * player.speedMod; 
+
+                if (keys.w || keys.s) player.velocity.z -= player.direction.z * moveSpeed * delta;
+                if (keys.a || keys.d) player.velocity.x += player.direction.x * moveSpeed * delta;
+
+                if (gameState.creative) {
+                    if (keys.space) player.velocity.y += moveSpeed * 5.0 * delta;
+                    if (keys.shift) player.velocity.y -= moveSpeed * 5.0 * delta;
+                } else {
+                    if (keys.space && player.canJump) {
+                        player.velocity.y = player.jumpForce * (player.speedMod < 1.0 ? 0.3 : 1.0); 
+                        player.canJump = false;
+                    }
+                }
+
+                // Basic Horizontal collision against builds
+                let hVec = new THREE.Vector3(player.velocity.x, 0, player.velocity.z).normalize();
+                if(hVec.lengthSq() > 0 && !gameState.creative) {
+                    let hRay = new THREE.Raycaster(camera.position, hVec, 0, 80);
+                    if(hRay.intersectObject(builtObjectsGroup, true).length > 0) {
+                        player.velocity.x = 0; player.velocity.z = 0;
+                    }
+                }
+
+                // Apply View Rotation
+                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                euler.x = player.pitch;
+                euler.y = player.yaw;
+                camera.quaternion.setFromEuler(euler);
+
+                const right = new THREE.Vector3(1, 0, 0).applyEuler(new THREE.Euler(0, player.yaw, 0));
+                camera.position.addScaledVector(forward, -player.velocity.z * delta * 60);
+                camera.position.addScaledVector(right, player.velocity.x * delta * 60);
+                camera.position.y += player.velocity.y * delta;
+
+                // Terrain Collision 
+                let groundHeight = getTerrainHeight(camera.position.x, camera.position.z);
+                
+                let downRay = new THREE.Raycaster(camera.position, new THREE.Vector3(0,-1,0), 0, 110);
+                let downHits = downRay.intersectObject(builtObjectsGroup, true);
+                if(downHits.length > 0) groundHeight = Math.max(groundHeight, downHits[0].point.y);
+
+                let playerHeight = 100;
+
+                if (!gameState.creative) {
+                    if (camera.position.y <= groundHeight + playerHeight) {
+                        if (player.lastVy < -2500) {
+                            let dmg = (-player.lastVy - 2500) * 0.04;
+                            if (dmg > 0) {
+                                playerStats.health -= dmg;
+                                if(playerStats.health <= 0) die(); else updateHUD();
+                            }
+                        }
+                        player.velocity.y = 0;
+                        camera.position.y = groundHeight + playerHeight;
+                        player.canJump = true;
+                    }
+                    
+                    if (camera.position.y < playerHeight - 1 && groundHeight < 0) { 
+                        if(playerStats.boatTime > 0) {
+                            playerStats.boatTime -= delta;
+                            if(camera.position.y < playerHeight + 10) camera.position.y = playerHeight + 10;
+                            player.velocity.y = Math.max(0, player.velocity.y);
+                            player.canJump = true;
+                            player.speedMod = 1.0;
+                        } else {
+                            player.speedMod = 0.25;
+                            playerStats.health -= 15 * delta;
+                        }
+                    } else {
+                        player.speedMod = 1.0; 
+                    }
+                }
+
+                player.lastVy = player.velocity.y;
+
+                camera.position.x = Math.max(0, Math.min(MAP_WIDTH, camera.position.x));
+                camera.position.z = Math.max(0, Math.min(MAP_HEIGHT, camera.position.z));
+
+                let px = Math.floor(camera.position.x / CELL_SIZE);
+                let py = Math.floor(camera.position.z / CELL_SIZE);
+                let cell = grid[py * WORLD_W + px];
+                
+                if (cell) {
+                    gameState.playerCell = cell;
+                    
+                    let bName = Object.keys(BIOMES).find(k => BIOMES[k] === cell.biome).replace('_', ' ');
+                    UI.biome.innerText = bName;
+                    UI.temp.innerText = cell.temp.toFixed(1) + "°F";
+                    if(cell.temp > 85) UI.temp.className = "font-mono text-red-400";
+                    else if(cell.temp < 32) UI.temp.className = "font-mono text-blue-400";
+                    else UI.temp.className = "font-mono text-green-400";
+
+                    let isRaining = false, isSnowing = false, intensityStr = "Clear", pLevel = 0;
+
+                    if (cell.pressure < 0.45) {
+                        if (cell.pressure < 0.25) { pLevel = 1.0; intensityStr = "Heavy"; }
+                        else if (cell.pressure < 0.35) { pLevel = 0.6; intensityStr = "Moderate"; }
+                        else { pLevel = 0.3; intensityStr = "Light"; }
+
+                        if (cell.temp < 32) isSnowing = true;
+                        else isRaining = true;
+                    }
+
+                    if (isSnowing) UI.weather.innerText = `${intensityStr} Snow`;
+                    else if (isRaining && pLevel === 1.0) UI.weather.innerText = `Thunderstorm`;
+                    else if (isRaining) UI.weather.innerText = `${intensityStr} Rain`;
+                    else UI.weather.innerText = `Clear`;
+
+                    if (!gameState.creative) {
+                        if (cell.temp <= 32) {
+                            if (playerStats.jacketTime > 0) playerStats.jacketTime -= delta;
+                            else playerStats.health -= 5 * delta; 
+                        } else {
+                            if (playerStats.health < 100 && groundHeight >= 0) {
+                                playerStats.health += (1.0 / 3.0) * delta; 
+                                if (playerStats.health > 100) playerStats.health = 100;
+                            }
+                        }
+                    }
+                    if (playerStats.health <= 0) die();
+                    else updateHUD();
+
+                    let targetFogDensity = 0.00004; 
+                    let targetFogColor = new THREE.Color(0x87CEEB);
+                    let targetLightInt = 0.8;
+
+                    if (isSnowing) {
+                        targetFogColor.setHex(0xd0d0d0);
+                        targetFogDensity = 0.00008 + (pLevel * 0.0002);
+                        targetLightInt = 0.4 - (pLevel * 0.2);
+                    } else if (isRaining) {
+                        targetFogColor.setHex(0x4a5a6a);
+                        targetFogDensity = 0.00006 + (pLevel * 0.0001);
+                        targetLightInt = 0.3 - (pLevel * 0.2);
+                    }
+
+                    scene.fog.density += (targetFogDensity - scene.fog.density) * delta * 2;
+                    scene.fog.color.lerp(targetFogColor, delta * 2);
+                    scene.background = scene.fog.color;
+                    dirLight.intensity += (targetLightInt - dirLight.intensity) * delta * 2;
+
+                    particleSystem.position.copy(camera.position);
+                    
+                    if (isRaining || isSnowing) {
+                        particleMat.opacity += (pLevel * 0.8 - particleMat.opacity) * delta * 2;
+                        
+                        if (isSnowing) {
+                            particleMat.color.setHex(0xffffff);
+                            particleMat.size = 20.0; 
+                        } else {
+                            particleMat.color.setHex(0xaaaaee);
+                            particleMat.size = 8.0; 
+                        }
+
+                        particleGeo.setDrawRange(0, Math.floor(PARTICLE_COUNT * pLevel));
+
+                        const positions = particleGeo.attributes.position.array;
+                        const velocities = particleGeo.attributes.velocity.array;
+                        
+                        let speedMultiplier = isSnowing ? 400 : 3200; 
+                        if (isSnowing) speedMultiplier += (pLevel * 200);
+                        
+                        for(let i=0; i<PARTICLE_COUNT; i++) {
+                            positions[i*3+1] -= velocities[i] * delta * speedMultiplier;
+                            if (isSnowing) positions[i*3] += Math.sin(simTime * 2 + i) * delta * 150;
+
+                            if (positions[i*3+1] < -1000) {
+                                positions[i*3+1] = 4000;
+                                positions[i*3] = (Math.random() - 0.5) * 8000;
+                                positions[i*3+2] = (Math.random() - 0.5) * 8000;
+                            }
+                        }
+                        particleGeo.attributes.position.needsUpdate = true;
+
+                        // Localized lightning strikes near player
+                        if (isRaining && pLevel === 1.0 && Math.random() < 0.005) {
+                            let strikePlayer = !gameState.creative && (Math.random() < 0.02);
+                            if (strikePlayer) {
+                                lightningLight.position.copy(camera.position);
+                                lightningLight.intensity = 50.0;
+                                lightningLight.distance = 3000;
+                                playerStats.health -= 75;
+                                UI.flash.style.opacity = '1';
+                                if (playerStats.health <= 0) die(); else updateHUD();
+                                setTimeout(() => { UI.flash.style.opacity = '0'; }, 50);
+                            } else {
+                                lightningLight.position.set(
+                                    camera.position.x + (Math.random() - 0.5) * 30000,
+                                    10000 + Math.random() * 1000,
+                                    camera.position.z + (Math.random() - 0.5) * 30000
+                                );
+                                lightningLight.intensity = 100.0;
+                                lightningLight.distance = 5000;
+                            }
+                        }
+                    } else {
+                        particleMat.opacity -= particleMat.opacity * delta * 5; 
+                    }
+                }
+
+                if (lightningLight.intensity > 0) {
+                    lightningLight.intensity = Math.max(0, lightningLight.intensity - delta * 300);
+                }
+
+                // --- Tree Regeneration ---
+                if(frameCount % 60 === 0) { 
+                    for(let i=0; i<treesData.length; i++) {
+                        if(treesData[i].harvested) {
+                            let dx = treesData[i].x - camera.position.x;
+                            let dz = treesData[i].z - camera.position.z;
+                            if((dx*dx + dz*dz) > 20000 * 20000) { 
+                                treesData[i].harvested = false;
+                                instTrunks.setMatrixAt(i, treesData[i].matrixTrunk);
+                                instLeaves.setMatrixAt(i, treesData[i].matrixLeaves);
+                                instTrunks.instanceMatrix.needsUpdate = true;
+                                instLeaves.instanceMatrix.needsUpdate = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+
+    </script>
+</body>
+</html>
